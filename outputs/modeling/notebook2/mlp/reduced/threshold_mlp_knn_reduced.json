@@ -1,0 +1,15 @@
+{
+  "threshold": 0.7553,
+  "model": "MLP",
+  "imputation": "KNN",
+  "version": "REDUCED",
+  "performance": {
+    "f1_score": 0.916,
+    "precision": 0.9677,
+    "recall": 0.8696
+  },
+  "ranking": 10,
+  "total_models": 20,
+  "save_date": "2025-08-09T22:02:48.838615",
+  "validation_dataset": "splits['knn_reduced']['X_val']"
+}

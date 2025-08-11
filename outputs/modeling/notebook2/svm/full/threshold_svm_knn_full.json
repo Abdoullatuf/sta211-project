@@ -1,0 +1,15 @@
+{
+  "threshold": 0.8314,
+  "model": "SVM",
+  "imputation": "KNN",
+  "version": "FULL",
+  "performance": {
+    "f1_score": 0.8855,
+    "precision": 0.9355,
+    "recall": 0.8406
+  },
+  "ranking": 19,
+  "total_models": 20,
+  "save_date": "2025-08-09T22:02:49.938618",
+  "validation_dataset": "splits['knn_full']['X_val']"
+}

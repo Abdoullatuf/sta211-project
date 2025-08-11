@@ -1,0 +1,15 @@
+{
+  "threshold": 0.4424,
+  "model": "SVM",
+  "imputation": "MICE",
+  "version": "REDUCED",
+  "performance": {
+    "f1_score": 0.9104,
+    "precision": 0.9385,
+    "recall": 0.8841
+  },
+  "ranking": 11,
+  "total_models": 20,
+  "save_date": "2025-08-09T22:02:48.919231",
+  "validation_dataset": "splits['mice_reduced']['X_val']"
+}

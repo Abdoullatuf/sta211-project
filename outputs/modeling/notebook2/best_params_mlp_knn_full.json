@@ -1,0 +1,9 @@
+{
+  "clf__activation": "relu",
+  "clf__alpha": 0.1,
+  "clf__hidden_layer_sizes": [
+    50
+  ],
+  "clf__learning_rate": "constant",
+  "clf__solver": "adam"
+}

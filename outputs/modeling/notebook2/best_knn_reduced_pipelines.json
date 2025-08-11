@@ -1,0 +1,7 @@
+{
+  "GradBoost": "G:\\Mon Drive\\Colab Notebooks\\projet_sta211_2025\\modeling\\notebook2\\pipeline_gradboost_knn_reduced.joblib",
+  "RandForest": "G:\\Mon Drive\\Colab Notebooks\\projet_sta211_2025\\modeling\\notebook2\\pipeline_randforest_knn_reduced.joblib",
+  "SVM": "G:\\Mon Drive\\Colab Notebooks\\projet_sta211_2025\\modeling\\notebook2\\pipeline_svm_knn_reduced.joblib",
+  "MLP": "G:\\Mon Drive\\Colab Notebooks\\projet_sta211_2025\\modeling\\notebook2\\pipeline_mlp_knn_reduced.joblib",
+  "XGBoost": "G:\\Mon Drive\\Colab Notebooks\\projet_sta211_2025\\modeling\\notebook2\\pipeline_xgboost_knn_reduced.joblib"
+}

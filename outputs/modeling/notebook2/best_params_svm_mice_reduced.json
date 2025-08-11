@@ -1,0 +1,5 @@
+{
+  "clf__C": 10,
+  "clf__gamma": "auto",
+  "clf__kernel": "rbf"
+}

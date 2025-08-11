@@ -1,0 +1,18 @@
+{
+    "environment": "Colab",
+    "project_info": {
+        "name": "STA211: Internet Advertisements Classification",
+        "author": "Abdoullatuf",
+        "version": "5.5",
+        "session_id": "6b075efb",
+        "date": "2025-08-07 10:45",
+        "random_state": 42,
+        "test_size": 0.2,
+        "scoring": "f1",
+        "cv_folds": 5
+    },
+    "paths": {
+        "project_root": "/content/drive/MyDrive/Colab Notebooks/projet_sta211_2025",
+        "config_dir": "/content/drive/MyDrive/Colab Notebooks/projet_sta211_2025/config"
+    }
+}

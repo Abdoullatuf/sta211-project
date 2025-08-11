@@ -1,0 +1,10 @@
+{
+  "clf__colsample_bytree": 0.7,
+  "clf__learning_rate": 0.15,
+  "clf__max_depth": 4,
+  "clf__n_estimators": 200,
+  "clf__reg_alpha": 0,
+  "clf__reg_lambda": 1,
+  "clf__scale_pos_weight": 5,
+  "clf__subsample": 0.8
+}

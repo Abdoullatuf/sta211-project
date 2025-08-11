@@ -1,0 +1,15 @@
+{
+  "threshold": 0.2849,
+  "model": "GradBoost",
+  "imputation": "KNN",
+  "version": "REDUCED",
+  "performance": {
+    "f1_score": 0.9333,
+    "precision": 0.9545,
+    "recall": 0.913
+  },
+  "ranking": 1,
+  "total_models": 20,
+  "save_date": "2025-08-09T22:02:48.092685",
+  "validation_dataset": "splits['knn_reduced']['X_val']"
+}

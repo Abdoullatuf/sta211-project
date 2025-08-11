@@ -1,0 +1,32 @@
+{
+  "XGBoost": {
+    "threshold": 0.9263,
+    "f1": 0.9302,
+    "precision": 1.0,
+    "recall": 0.8696
+  },
+  "RandForest": {
+    "threshold": 0.5718,
+    "f1": 0.9231,
+    "precision": 0.9836,
+    "recall": 0.8696
+  },
+  "GradBoost": {
+    "threshold": 0.3484,
+    "f1": 0.9185,
+    "precision": 0.9394,
+    "recall": 0.8986
+  },
+  "MLP": {
+    "threshold": 0.9077,
+    "f1": 0.8939,
+    "precision": 0.9365,
+    "recall": 0.8551
+  },
+  "SVM": {
+    "threshold": 0.8314,
+    "f1": 0.8855,
+    "precision": 0.9355,
+    "recall": 0.8406
+  }
+}
