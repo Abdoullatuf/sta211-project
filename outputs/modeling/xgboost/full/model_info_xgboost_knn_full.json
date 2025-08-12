@@ -1,0 +1,15 @@
+{
+  "model_name": "xgboost",
+  "imputation": "KNN",
+  "version": "FULL",
+  "files": {
+    "pipeline": "pipeline_xgboost_knn_full.joblib",
+    "threshold": "threshold_xgboost_knn_full.json"
+  },
+  "performance": {
+    "f1": 0.9302,
+    "precision": 1.0,
+    "recall": 0.8696,
+    "threshold": 0.9263
+  }
+}

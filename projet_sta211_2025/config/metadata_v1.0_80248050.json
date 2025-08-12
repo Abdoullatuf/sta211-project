@@ -1,0 +1,18 @@
+{
+    "environment": "Local",
+    "project_info": {
+        "name": "STA211: Internet Advertisements Classification",
+        "author": "Abdoullatuf",
+        "version": "1.0",
+        "session_id": "80248050",
+        "date": "2025-08-11 21:40",
+        "random_state": 42,
+        "test_size": 0.2,
+        "scoring": "f1",
+        "cv_folds": 5
+    },
+    "paths": {
+        "project_root": "c:\\sta211-project\\projet_sta211_2025",
+        "config_dir": "c:\\sta211-project\\projet_sta211_2025\\config"
+    }
+}

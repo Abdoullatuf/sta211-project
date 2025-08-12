@@ -1,0 +1,15 @@
+{
+  "threshold": 0.4431,
+  "model": "svm",
+  "imputation": "KNN",
+  "version": "REDUCED",
+  "performance": {
+    "f1_score": 0.9242,
+    "precision": 0.9683,
+    "recall": 0.8841
+  },
+  "ranking": 6,
+  "total_models": 20,
+  "save_date": "2025-08-13T01:47:21.672426",
+  "validation_dataset": "splits['knn_reduced']['X_val']"
+}

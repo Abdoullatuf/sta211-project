@@ -1,0 +1,15 @@
+{
+  "threshold": 0.7287,
+  "model": "xgboost",
+  "imputation": "MICE",
+  "version": "REDUCED",
+  "performance": {
+    "f1_score": 0.9008,
+    "precision": 0.9516,
+    "recall": 0.8551
+  },
+  "ranking": 15,
+  "total_models": 20,
+  "save_date": "2025-08-13T01:47:21.916643",
+  "validation_dataset": "splits['mice_reduced']['X_val']"
+}

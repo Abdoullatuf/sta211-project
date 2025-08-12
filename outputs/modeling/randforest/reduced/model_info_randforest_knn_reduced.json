@@ -1,0 +1,15 @@
+{
+  "model_name": "randforest",
+  "imputation": "KNN",
+  "version": "REDUCED",
+  "files": {
+    "pipeline": "pipeline_randforest_knn_reduced.joblib",
+    "threshold": "threshold_randforest_knn_reduced.json"
+  },
+  "performance": {
+    "f1": 0.8923,
+    "precision": 0.9508,
+    "recall": 0.8406,
+    "threshold": 0.4777
+  }
+}

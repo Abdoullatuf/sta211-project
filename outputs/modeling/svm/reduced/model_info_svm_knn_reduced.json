@@ -1,0 +1,15 @@
+{
+  "model_name": "svm",
+  "imputation": "KNN",
+  "version": "REDUCED",
+  "files": {
+    "pipeline": "pipeline_svm_knn_reduced.joblib",
+    "threshold": "threshold_svm_knn_reduced.json"
+  },
+  "performance": {
+    "f1": 0.9242,
+    "precision": 0.9683,
+    "recall": 0.8841,
+    "threshold": 0.4431
+  }
+}

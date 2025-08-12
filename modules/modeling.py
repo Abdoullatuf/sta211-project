@@ -701,8 +701,12 @@ def load_pipeline(model_name, imputation_method, version, models_dir=None):
         return None
 
 
-def load_best_pipelines(imputation_method, version="", models_dir=None):
+def load_best_pipelines(imputation_method, version="", models_dir=None, model_dir=None):
     """Charge tous les meilleurs pipelines pour une méthode d'imputation donnée."""
+    # Compatibilité avec les deux noms de paramètres
+    if model_dir is not None:
+        models_dir = model_dir
+    
     if models_dir is None:
         models_dir = Path("models")
     else:
