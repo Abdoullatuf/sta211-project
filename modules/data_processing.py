@@ -397,118 +397,75 @@ class TransformationOptimaleMixte:
         """
         Initialise la classe avec un chemin de sauvegarde pour les modèles.
         """
+        self.transformer_yj = PowerTransformer(method='yeo-johnson', standardize=True)
+        self.transformer_bc = PowerTransformer(method='box-cox', standardize=True)
+        self.variables_yj = ['X1', 'X2']
+        self.variables_bc = ['X3']
+        self.is_fitted = False
+        self.verbose = verbose
         self.models_dir = Path(models_dir)
         self.models_dir.mkdir(parents=True, exist_ok=True)
-        self.verbose = verbose
-        self.transformers = {}
         
         if verbose:
             print(f"🏭 TransformationOptimaleMixte initialisée")
             print(f"📁 Répertoire des modèles: {self.models_dir}")
     
-    def fit_transform(
-        self, 
-        data: pd.DataFrame, 
-        method_mapping: Dict[str, str] = None,
-        save_transformers: bool = True,
-        prefix: str = ""
-    ) -> pd.DataFrame:
-        """
-        Applique les transformations optimales selon le mapping spécifié.
+    def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Applique la transformation optimale mixte complète."""
+        if self.verbose:
+            print("🔧 TRANSFORMATION OPTIMALE MIXTE")
+            print("=" * 50)
         
-        Args:
-            data: DataFrame contenant les variables à transformer
-            method_mapping: dict {colonne: methode} où méthode = 'yeo-johnson' ou 'box-cox'
-            save_transformers: Sauvegarder les transformateurs
-            prefix: Préfixe pour les fichiers de sauvegarde
-            
-        Returns:
-            DataFrame transformé
-        """
-        if method_mapping is None:
-            method_mapping = {
-                'X1': 'yeo-johnson',
-                'X2': 'yeo-johnson', 
-                'X3': 'box-cox'
-            }
+        self._diagnostic_initial(df)
+        df_result = df.copy()
         
-        data_transformed = data.copy()
+        # Yeo-Johnson pour X1, X2
+        df_result[self.variables_yj] = self.transformer_yj.fit_transform(df[self.variables_yj])
         
-        for col, method in method_mapping.items():
-            if col not in data.columns:
-                if self.verbose:
-                    print(f"⚠️ Colonne '{col}' introuvable, ignorée.")
-                continue
-            
+        # Box-Cox pour X3
+        df_x3 = df[self.variables_bc].copy()
+        if (df_x3['X3'] <= 0).any():
+            offset = abs(df_x3['X3'].min()) + 1e-6
+            df_x3['X3'] += offset
             if self.verbose:
-                print(f"🔄 Transformation {method} pour {col}...")
-            
-            # Créer et ajuster le transformateur
-            if method == 'yeo-johnson':
-                transformer = PowerTransformer(method='yeo-johnson', standardize=False)
-            elif method == 'box-cox':
-                transformer = PowerTransformer(method='box-cox', standardize=False)
-            else:
-                raise ValueError(f"Méthode '{method}' non supportée")
-            
-            # S'assurer que les valeurs sont positives pour Box-Cox
-            if method == 'box-cox':
-                min_val = data[col].min()
-                if min_val <= 0:
-                    data_transformed[col] = data[col] - min_val + 1
-            
-            # Ajuster et transformer
-            data_transformed[col] = transformer.fit_transform(
-                data_transformed[[col]]
-            ).flatten()
-            
-            # Sauvegarder le transformateur
-            self.transformers[col] = transformer
-            
-            if save_transformers:
-                transformer_filename = f"{prefix}{method.replace('-', '_')}_transformer.pkl"
-                transformer_path = self.models_dir / transformer_filename
-                joblib.dump(transformer, transformer_path)
-                
-                if self.verbose:
-                    print(f"💾 Transformateur sauvegardé: {transformer_path}")
+                print(f"⚠️ X3 corrigé : un offset de {offset:.6f} a été ajouté.")
         
-        return data_transformed
+        df_result[self.variables_bc] = self.transformer_bc.fit_transform(df_x3)
+        
+        self.is_fitted = True
+        self._rename_columns(df_result)
+        self._rapport_transformation(df, df_result)
+        self.save_transformers()
+        
+        return df_result
     
-    def transform(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Applique les transformations déjà ajustées.
-        """
-        if not self.transformers:
-            raise ValueError("Aucun transformateur ajusté. Utilisez fit_transform() d'abord.")
-        
-        data_transformed = data.copy()
-        
-        for col, transformer in self.transformers.items():
-            if col in data.columns:
-                data_transformed[col] = transformer.transform(data_transformed[[col]]).flatten()
-        
-        return data_transformed
-    
-    def load_transformers(self, prefix: str = ""):
-        """
-        Charge les transformateurs depuis les fichiers sauvegardés.
-        """
-        transformer_files = {
-            'X1': f"{prefix}yeo_johnson_transformer.pkl",
-            'X2': f"{prefix}yeo_johnson_transformer.pkl", 
-            'X3': f"{prefix}box_cox_transformer.pkl"
-        }
-        
-        for col, filename in transformer_files.items():
-            transformer_path = self.models_dir / filename
-            if transformer_path.exists():
-                self.transformers[col] = joblib.load(transformer_path)
-                if self.verbose:
-                    print(f"✅ Transformateur chargé pour {col}: {transformer_path}")
-            else:
-                if self.verbose:
-                    print(f"⚠️ Transformateur non trouvé pour {col}: {transformer_path}")
+    def _rename_columns(self, df: pd.DataFrame):
+        """Renomme les colonnes après transformation."""
+        rename_map = {col: f"{col}_transformed" for col in self.variables_yj + self.variables_bc}
+        df.rename(columns=rename_map, inplace=True)
+
+    def save_transformers(self):
+        """Sauvegarde les transformateurs dans le dossier spécifié."""
+        joblib.dump(self.transformer_yj, self.models_dir / 'yeo_johnson_transformer.pkl')
+        joblib.dump(self.transformer_bc, self.models_dir / 'box_cox_transformer.pkl')
+        if self.verbose:
+            print(f"\n💾 Transformateurs sauvegardés dans : {self.models_dir}")
+            
+    def _diagnostic_initial(self, df):
+        """Diagnostic initial des asymétries."""
+        if self.verbose:
+            print("\n📊 Diagnostic initial (Asymétrie):")
+            for var in self.variables_yj + self.variables_bc:
+                print(f"  {var}: {df[var].skew():.3f}")
+
+    def _rapport_transformation(self, df_original, df_transformed):
+        """Rapport de transformation avec comparaison des asymétries."""
+        if self.verbose:
+            print("\n📊 Rapport de Transformation :")
+            for var in self.variables_yj + self.variables_bc:
+                original_skew = df_original[var].skew()
+                transformed_skew = df_transformed[f'{var}_transformed'].skew()
+                print(f"  {var}: Asymétrie avant={original_skew:+.3f} → après={transformed_skew:+.3f}")
 
 
 # =============================================================================
@@ -981,11 +938,34 @@ def plot_correlation_heatmap(df, target_variable, output_dir='outputs/figures/ed
 # 6. FONCTIONS UTILITAIRES DE RÉDUCTION DE CORRÉLATION
 # =============================================================================
 
-def find_highly_correlated_groups(df: pd.DataFrame, threshold: float = 0.90):
+def find_highly_correlated_groups(
+    df: pd.DataFrame, 
+    threshold: float = 0.90, 
+    exclude_cols: List[str] = None,
+    show_plot: bool = False,
+    save_path: Union[str, Path] = None
+):
     """
     Identifie les groupes de variables fortement corrélées (|corr| > threshold).
+    
+    Args:
+        df: DataFrame à analyser
+        threshold: Seuil de corrélation
+        exclude_cols: Colonnes à exclure de l'analyse
+        show_plot: Afficher la heatmap
+        save_path: Chemin de sauvegarde de la heatmap
+    
+    Returns:
+        dict: Résultats avec groupes et métadonnées
     """
-    corr_matrix = df.corr().abs()
+    if exclude_cols is None:
+        exclude_cols = []
+    
+    # Filtrer les colonnes à analyser
+    cols_to_analyze = [col for col in df.columns if col not in exclude_cols]
+    df_filtered = df[cols_to_analyze]
+    
+    corr_matrix = df_filtered.corr().abs()
     upper_triangle = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
 
     groups = []
@@ -1000,7 +980,40 @@ def find_highly_correlated_groups(df: pd.DataFrame, threshold: float = 0.90):
             groups.append(group)
             visited.update(group)
 
-    return groups
+    # Optionnel: générer la heatmap
+    if show_plot or save_path:
+        plt.figure(figsize=(10, 8))
+        mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+        sns.heatmap(corr_matrix, mask=mask, annot=False, cmap='coolwarm', 
+                   center=0, square=True, linewidths=0.5)
+        plt.title(f'Matrice de corrélation (seuil: {threshold})')
+        plt.tight_layout()
+        
+        if save_path:
+            save_path = Path(save_path)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"✅ Heatmap sauvegardée : {save_path}")
+        
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
+
+    # Calculer les variables à supprimer (toutes sauf la première de chaque groupe)
+    to_drop = []
+    for group in groups:
+        if len(group) > 1:
+            to_drop.extend(group[1:])  # Garder la première, supprimer les autres
+
+    return {
+        'groups': groups,
+        'to_drop': to_drop,
+        'threshold': threshold,
+        'total_groups': len(groups),
+        'excluded_columns': exclude_cols,
+        'analyzed_columns': cols_to_analyze
+    }
 
 
 def drop_correlated_duplicates(
@@ -1162,3 +1175,361 @@ def prepare_final_dataset_with_correlation_reduction(
         print(f"🔢 Réduction : {df.shape[1]} → {df_reduced.shape[1]} colonnes ({metadata['reduction_ratio']:.1f}% réduit)")
     
     return df_reduced, metadata
+
+def apply_collinearity_filter(
+    df: pd.DataFrame,
+    cols_to_drop: List[str],
+    imputation_method: str = 'knn',
+    models_dir: Union[str, Path] = None,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Applique un filtre de collinéarité en supprimant les colonnes spécifiées.
+    
+    Args:
+        df: DataFrame à filtrer
+        cols_to_drop: Liste des colonnes à supprimer
+        imputation_method: Méthode d'imputation utilisée (pour info)
+        models_dir: Répertoire des modèles (pour cohérence avec l'interface)
+        verbose: Affichage des informations
+    
+    Returns:
+        DataFrame filtré
+    """
+    if verbose:
+        print(f"📊 DataFrame initial: {df.shape}")
+        print(f"🗑️ Colonnes à supprimer: {len(cols_to_drop)}")
+        if cols_to_drop:
+            print(f"   Variables: {cols_to_drop[:10]}{'...' if len(cols_to_drop) > 10 else ''}")
+    
+    # Supprimer les colonnes qui existent dans le DataFrame
+    existing_cols_to_drop = [col for col in cols_to_drop if col in df.columns]
+    df_filtered = df.drop(columns=existing_cols_to_drop)
+    
+    if verbose:
+        print(f"📊 DataFrame filtré: {df_filtered.shape}")
+        print(f"✅ {len(existing_cols_to_drop)} colonnes supprimées")
+        if len(existing_cols_to_drop) != len(cols_to_drop):
+            missing_cols = set(cols_to_drop) - set(existing_cols_to_drop)
+            print(f"⚠️ {len(missing_cols)} colonnes introuvables: {list(missing_cols)[:5]}{'...' if len(missing_cols) > 5 else ''}")
+    
+    return df_filtered
+
+# =============================================================================
+# 5. FONCTIONS DE VISUALISATION MANQUANTES
+# =============================================================================
+
+def plot_continuous_by_class(df, continuous_cols, output_dir, figsize=(15, 5)):
+    """Distribution des variables continues par classe."""
+    fig, axes = plt.subplots(1, len(continuous_cols), figsize=figsize)
+    for i, col in enumerate(continuous_cols):
+        df_clean = df[[col, 'y']].dropna()
+        df_clean['y_label'] = df_clean['y'].map({0: 'Non-pub', 1: 'Pub'})
+        sns.violinplot(data=df_clean, x='y_label', y=col, ax=axes[i])
+        axes[i].set_title(f'{col} par classe')
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'continuous_by_class.png'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"✅ Figure sauvegardée : {output_path}")
+    plt.show()
+
+def plot_continuous_target_corr(df, continuous_cols, output_dir):
+    """Corrélations des variables continues avec la cible."""
+    fig, ax = plt.subplots(figsize=(8, 4))
+    corr_data = df[continuous_cols + ['y']].corr()['y'][:-1].to_frame()
+    sns.heatmap(corr_data, annot=True, cmap='coolwarm', center=0,
+                cbar_kws={'label': 'Corrélation'}, fmt='.3f', ax=ax)
+    ax.set_title('Corrélations avec la cible')
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'continuous_target_correlation.png'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"✅ Figure sauvegardée : {output_path}")
+    plt.show()
+
+def plot_binary_sparsity(df, binary_cols, output_dir, sample_size=100):
+    """Visualisation de la sparsité des variables binaires."""
+    sample_vars = np.random.choice(binary_cols, size=min(sample_size, len(binary_cols)), replace=False)
+    sample_data = df[sample_vars].head(sample_size)
+    plt.figure(figsize=(8, 4))
+    plt.imshow(sample_data.values, cmap='binary', aspect='auto')
+    plt.colorbar(label='Valeur (0 ou 1)')
+    plt.title('Sparsité (100 obs × 100 var binaires)')
+    plt.xlabel('Variables')
+    plt.ylabel('Observations')
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'sparsity_visualization.png'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"✅ Figure sauvegardée : {output_path}")
+    plt.show()
+
+def plot_eda_summary(df, continuous_cols, binary_cols, target_corr, sparsity, imbalance_ratio, output_dir, presence_series):
+    """Résumé visuel de l'EDA."""
+    fig = plt.figure(figsize=(14, 8))
+
+    # Distribution de la cible
+    ax1 = plt.subplot(2, 3, 1)
+    df['y'].map({0: 'noad.', 1: 'ad.'}).value_counts().plot.pie(
+        ax=ax1, autopct='%1.1f%%', colors=['#3498db', '#e74c3c'])
+    ax1.set_title('Cible')
+    ax1.set_ylabel('')
+
+    # Valeurs manquantes
+    ax2 = plt.subplot(2, 3, 2)
+    pd.Series({'X1': 27.41, 'X2': 27.37, 'X3': 27.61}).plot.bar(
+        ax=ax2, color='coral')
+    ax2.set_title('Valeurs manquantes')
+    ax2.set_ylabel('%')
+
+    # Sparsité
+    ax3 = plt.subplot(2, 3, 3)
+    pd.Series({'Zéros': sparsity, 'Uns': 100-sparsity}).plot.pie(
+        ax=ax3, autopct='%1.1f%%', colors=['lightgray', 'darkgray'])
+    ax3.set_title('Sparsité')
+
+    # Corrélations avec cible
+    ax4 = plt.subplot(2, 3, 4)
+    target_corr.abs().nlargest(10).plot.barh(ax=ax4, color='skyblue')
+    ax4.set_title('Top 10 corrélations')
+
+    # Taux de présence
+    ax5 = plt.subplot(2, 3, 5)
+    presence_series.hist(ax=ax5, bins=30, color='lightgreen', edgecolor='black')
+    ax5.axvline(presence_series.mean(), color='red', linestyle='--')
+    ax5.set_title('Taux de présence')
+    ax5.legend([f'Moy: {presence_series.mean():.1f}%'])
+
+    # Statistiques clés
+    ax6 = plt.subplot(2, 3, 6)
+    ax6.axis('off')
+    summary = f"""
+    Observations: {len(df):,}
+    Variables: {df.shape[1]:,}
+    Déséquilibre: {imbalance_ratio:.1f}:1
+    Sparsité: {sparsity:.1f}%
+    Corr. max (y): {abs(target_corr).max():.3f}
+    Binaires: {len(binary_cols)} | Continues: {len(continuous_cols)}
+    """
+    ax6.text(0, 0.5, summary, fontsize=12)
+
+    plt.suptitle("Résumé visuel de l'EDA")
+    plt.tight_layout()
+    
+    output_path = Path(output_dir) / 'eda_summary.png'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"✅ Figure sauvegardée : {output_path}")
+    plt.show()
+
+def plot_outlier_comparison(
+    df_before: pd.DataFrame,
+    df_after: pd.DataFrame,
+    cols: List[str],
+    output_dir: Union[str, Path],
+    show: bool = True,
+    save: bool = True,
+    dpi: int = 100
+):
+    """Affiche les boxplots avant/après traitement des outliers."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for col in cols:
+        fig, axes = plt.subplots(1, 2, figsize=(8, 3))
+
+        sns.boxplot(x=df_before[col], ax=axes[0], color='salmon')
+        axes[0].set_title(f"{col} - Avant traitement")
+
+        sns.boxplot(x=df_after[col], ax=axes[1], color='mediumseagreen')
+        axes[1].set_title(f"{col} - Après traitement")
+
+        plt.tight_layout()
+
+        if save:
+            output_path = output_dir / f"{col}_outliers_comparison.png"
+            plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+            print(f"✅ Figure sauvegardée : {output_path}")
+        
+        if show:
+            plt.show()
+        
+        plt.close()
+
+def generer_graphiques_comparaison(df_avant, df_apres, figures_dir):
+    """Génère des graphiques de comparaison avant/après transformation."""
+    figures_dir = Path(figures_dir)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    
+    vars_to_compare = ['X1', 'X2', 'X3']
+    transformed_vars = ['X1_transformed', 'X2_transformed', 'X3_transformed']
+    
+    for original, transformed in zip(vars_to_compare, transformed_vars):
+        if original in df_avant.columns and transformed in df_apres.columns:
+            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+            
+            # Avant transformation
+            df_avant[original].dropna().hist(bins=50, ax=axes[0], alpha=0.7, color='lightcoral')
+            axes[0].set_title(f'{original} - Avant transformation')
+            axes[0].set_xlabel(original)
+            axes[0].set_ylabel('Fréquence')
+            
+            # Après transformation
+            df_apres[transformed].dropna().hist(bins=50, ax=axes[1], alpha=0.7, color='lightgreen')
+            axes[1].set_title(f'{transformed} - Après transformation')
+            axes[1].set_xlabel(transformed)
+            axes[1].set_ylabel('Fréquence')
+            
+            plt.tight_layout()
+            
+            output_path = figures_dir / f'transformation_comparison_{original}.png'
+            plt.savefig(output_path, dpi=150, bbox_inches='tight')
+            print(f"✅ Figure sauvegardée : {output_path}")
+            plt.show()
+            plt.close()
+
+def full_correlation_analysis(
+    df_study: pd.DataFrame,
+    continuous_cols: List[str],
+    presence_rates: Dict[str, float],
+    fig_dir: Union[str, Path],
+    top_n_corr_features: int = 20,
+    figsize_corr_matrix: Tuple[int, int] = (8, 6)
+) -> None:
+    """
+    Analyse combinée des corrélations :
+    - Variables continues + 40 variables binaires sélectionnées par taux de présence
+    - Corrélation avec la cible y
+    - Heatmap des corrélations
+    - Détection des paires fortement corrélées
+    - Résumé imprimé
+
+    :param df_study: DataFrame complet
+    :param continuous_cols: Liste des colonnes continues
+    :param presence_rates: Dictionnaire des taux de présence des variables binaires
+    :param fig_dir: Répertoire où sauvegarder la heatmap
+    :param top_n_corr_features: Nombre de variables à afficher dans le résumé
+    :param figsize_corr_matrix: Taille de la heatmap
+    """
+
+    print("🔗 Analyse combinée des corrélations (features ↔ cible, features ↔ features)")
+    print("=" * 80)
+
+    fig_dir = Path(fig_dir)
+    fig_dir.mkdir(parents=True, exist_ok=True)
+
+    # Sélection des variables binaires par quartile de taux de présence
+    presence_series = pd.Series(presence_rates)
+    quartiles = presence_series.quantile([0.25, 0.5, 0.75])
+
+    vars_q1 = presence_series[presence_series <= quartiles[0.25]].sample(10, random_state=42).index.tolist()
+    vars_q2 = presence_series[(presence_series > quartiles[0.25]) & (presence_series <= quartiles[0.5])].sample(10, random_state=42).index.tolist()
+    vars_q3 = presence_series[(presence_series > quartiles[0.5]) & (presence_series <= quartiles[0.75])].sample(10, random_state=42).index.tolist()
+    vars_q4 = presence_series[presence_series > quartiles[0.75]].sample(10, random_state=42).index.tolist()
+
+    selected_vars = continuous_cols + vars_q1 + vars_q2 + vars_q3 + vars_q4
+    print(f"Variables sélectionnées : {len(selected_vars)} (3 continues + 40 binaires)")
+
+    # Matrice de corrélation
+    corr_matrix = df_study[selected_vars + ['y']].corr()
+
+    # Corrélations avec la cible
+    target_corr = corr_matrix['y'].drop('y').sort_values(ascending=False)
+    print("\nTop 10 corrélations avec la cible (y) :")
+    for var, corr in target_corr.head(10).items():
+        print(f"  - {var:<20} : {corr:.4f}")
+
+    print("\nBottom 10 corrélations avec la cible (y) :")
+    for var, corr in target_corr.tail(10).items():
+        print(f"  - {var:<20} : {corr:.4f}")
+
+    # Heatmap
+    plt.figure(figsize=figsize_corr_matrix)
+    mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+    sns.heatmap(
+        corr_matrix,
+        mask=mask,
+        cmap='coolwarm',
+        center=0,
+        square=True,
+        linewidths=0.5,
+        cbar_kws={"shrink": 0.8},
+        vmin=-0.5,
+        vmax=0.5
+    )
+    plt.title('Matrice de corrélation (échantillon)', fontsize=14)
+    plt.tight_layout()
+    heatmap_path = fig_dir / "correlation_matrix_sample.png"
+    plt.savefig(heatmap_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"\nHeatmap sauvegardée dans : {heatmap_path}")
+
+    # Corrélations entre features
+    upper_triangle = corr_matrix.where(np.triu(np.ones_like(corr_matrix, dtype=bool), k=1))
+    high_corr_pairs = [
+        {'var1': c1, 'var2': c2, 'corr': upper_triangle.loc[c1, c2]}
+        for c1 in upper_triangle.columns
+        for c2 in upper_triangle.columns
+        if c1 != c2 and not pd.isna(upper_triangle.loc[c1, c2]) and abs(upper_triangle.loc[c1, c2]) > 0.8
+    ]
+
+    print("\nPaires fortement corrélées entre variables (|r| > 0.8) :")
+    if high_corr_pairs:
+        print(f"⚠️ {len(high_corr_pairs)} paires trouvées.")
+        for pair in high_corr_pairs[:5]:
+            print(f"  - {pair['var1']} vs {pair['var2']} : r = {pair['corr']:.3f}")
+    else:
+        print("✅ Aucune paire avec |r| > 0.8")
+
+    # Résumé
+    print("\nRésumé final :")
+    print(f"  - Corrélation max avec la cible y : {abs(target_corr).max():.3f}")
+    print(f"  - Total de variables analysées : {len(selected_vars)}")
+    print(f"  - Multicolinéarité modérée : {'Oui' if high_corr_pairs else 'Non'}")
+
+def appliquer_transformation_optimale(
+    df: pd.DataFrame, 
+    models_dir: Union[str, Path], 
+    verbose: bool = True
+) -> pd.DataFrame:
+    """Fonction principale pour appliquer la transformation et sauvegarder les modèles."""
+    transformer = TransformationOptimaleMixte(models_dir=models_dir, verbose=verbose)
+    df_transformed = transformer.fit_transform(df)
+    if verbose:
+        print("\n✅ TRANSFORMATION OPTIMALE TERMINÉE")
+    return df_transformed
+
+def plot_transformed_distributions(df, transformed_vars, output_dir, figsize=(6, 2)):
+    """Génère des histogrammes et boxplots pour les variables transformées."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    for col in transformed_vars:
+        if col not in df.columns:
+            print(f"⚠️ Colonne '{col}' introuvable, ignorée.")
+            continue
+            
+        fig, ax = plt.subplots(1, 2, figsize=figsize)
+
+        # Histogramme + KDE
+        sns.histplot(x=df[col], bins=30, kde=True, ax=ax[0], color="mediumseagreen")
+        ax[0].set_title(f"{col} - Histogramme")
+        ax[0].set_xlabel(col)
+
+        # Boxplot
+        sns.boxplot(x=df[col], ax=ax[1], color="salmon")
+        ax[1].set_title(f"{col} - Boxplot")
+
+        plt.tight_layout()
+
+        # Sauvegarde
+        fig_path = output_dir / f"{col}_distribution_boxplot.png"
+        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+        plt.show()
+
+        print(f"✅ Figure sauvegardée : {fig_path}")
+        plt.close()
