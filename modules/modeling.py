@@ -701,6 +701,44 @@ def load_pipeline(model_name, imputation_method, version, models_dir=None):
         return None
 
 
+def load_best_pipelines(imputation_method, version="", models_dir=None):
+    """Charge tous les meilleurs pipelines pour une méthode d'imputation donnée."""
+    if models_dir is None:
+        models_dir = Path("models")
+    else:
+        models_dir = Path(models_dir)
+    
+    version_suffix = f"_{version}" if version else ""
+    
+    models_to_load = ["gradboost", "mlp", "randforest", "svm", "xgboost"]
+    pipelines = {}
+    
+    for model_name in models_to_load:
+        # Essayer différents patterns de noms de fichiers
+        patterns = [
+            f"pipeline_{model_name}_{imputation_method}{version_suffix}.joblib",
+            f"best_{model_name}_{imputation_method}{version_suffix}.joblib",
+            f"{model_name}_{imputation_method}{version_suffix}.joblib"
+        ]
+        
+        loaded = False
+        for pattern in patterns:
+            filepath = models_dir / pattern
+            if filepath.exists():
+                try:
+                    pipelines[model_name] = joblib.load(filepath)
+                    print(f"✅ {model_name}_{imputation_method} chargé depuis {filepath}")
+                    loaded = True
+                    break
+                except Exception as e:
+                    print(f"❌ Erreur lors du chargement de {filepath}: {e}")
+        
+        if not loaded:
+            print(f"⚠️ Pipeline {model_name}_{imputation_method} non trouvé")
+    
+    return pipelines
+
+
 def run_stacking_with_refit(X_train, y_train, X_val, y_val, X_test, y_test,
                             imputation_method, models_dir, output_dir=None,
                             model_name_suffix="", create_stacking_func=None,
