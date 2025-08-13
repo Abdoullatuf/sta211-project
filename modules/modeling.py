@@ -512,7 +512,10 @@ def load_best_params_from_saved_files(model_name, imputation="knn", models_dir=N
     """Charge les meilleurs paramètres depuis les fichiers JSON sauvegardés."""
     try:
         if models_dir is None:
-            raise ValueError("models_dir doit être fourni")
+            # Par défaut, chercher dans outputs/modeling/notebook2
+            models_dir = Path("outputs/modeling/notebook2")
+        else:
+            models_dir = Path(models_dir)
         
         # Construire les noms de fichiers possibles
         model_mapping = {
@@ -529,18 +532,31 @@ def load_best_params_from_saved_files(model_name, imputation="knn", models_dir=N
         if base_name is None:
             raise ValueError(f"Modèle {model_name} non reconnu")
         
-        # Essayer différentes variantes
+        # Essayer différentes variantes (priorité aux "reduced" car meilleurs résultats)
         possible_files = [
-            f"best_params_{base_name}_{imputation}_full.json",
             f"best_params_{base_name}_{imputation}_reduced.json",
+            f"best_params_{base_name}_{imputation}_full.json",
             f"best_params_{base_name}_{imputation}.json"
         ]
         
+        # Essayer dans plusieurs répertoires
+        search_dirs = [
+            models_dir,
+            models_dir / "notebook2",
+            Path("outputs/modeling/notebook2"),
+            Path("outputs/modeling")
+        ]
+        
         file_path = None
-        for file_name in possible_files:
-            test_path = Path(models_dir) / file_name
-            if test_path.exists():
-                file_path = test_path
+        for search_dir in search_dirs:
+            if not search_dir.exists():
+                continue
+            for file_name in possible_files:
+                test_path = search_dir / file_name
+                if test_path.exists():
+                    file_path = test_path
+                    break
+            if file_path is not None:
                 break
         
         if file_path is None:
