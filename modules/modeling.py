@@ -1387,6 +1387,84 @@ def analyze_feature_importance(model, X_train, y_train, X_eval, y_eval, feature_
 # 8. OPTIMISATION DE SEUILS POUR STACKING (ex-stacking_threshold_optimizer.py)
 # =============================================================================
 
+def optimize_stacking_thresholds_with_trained_models(stacking_knn, stacking_mice, 
+                                                   X_val_knn, y_val_knn, X_val_mice, y_val_mice,
+                                                   optimization_method="f1", verbose=True):
+    """
+    Optimise les seuils pour des modèles de stacking déjà entraînés.
+    
+    Parameters:
+    -----------
+    stacking_knn : modèle de stacking KNN déjà entraîné
+    stacking_mice : modèle de stacking MICE déjà entraîné  
+    X_val_knn, y_val_knn : données de validation KNN
+    X_val_mice, y_val_mice : données de validation MICE
+    optimization_method : str, méthode d'optimisation ("f1", "precision", "recall")
+    verbose : bool, affichage détaillé
+    
+    Returns:
+    --------
+    dict: Dictionnaire contenant les résultats d'optimisation pour KNN et MICE
+    """
+    
+    if verbose:
+        print("🎯 Optimisation des seuils avec modèles pré-entraînés")
+        print("=" * 60)
+    
+    results = {}
+    
+    # Données pour chaque modèle
+    models_data = {
+        'knn': (stacking_knn, X_val_knn, y_val_knn),
+        'mice': (stacking_mice, X_val_mice, y_val_mice)
+    }
+    
+    for imputation_name, (model, X_val, y_val) in models_data.items():
+        if verbose:
+            print(f"\n--- Optimisation pour {imputation_name.upper()} ---")
+        
+        try:
+            # Prédictions de probabilité
+            y_proba = model.predict_proba(X_val)[:, 1]
+            
+            # Optimisation du seuil
+            best_threshold, best_score = _optimize_threshold_internal(
+                y_val, y_proba, metric=optimization_method
+            )
+            
+            # Prédictions finales avec seuil optimal
+            y_pred_opt = (y_proba >= best_threshold).astype(int)
+            
+            # Calcul des métriques
+            f1_opt = f1_score(y_val, y_pred_opt)
+            precision_opt = precision_score(y_val, y_pred_opt)
+            recall_opt = recall_score(y_val, y_pred_opt)
+            
+            results[imputation_name] = {
+                'model': model,
+                'threshold': float(best_threshold),
+                f'{optimization_method}_score': float(best_score),
+                'f1_score': float(f1_opt),
+                'precision': float(precision_opt),
+                'recall': float(recall_opt),
+                'y_proba': y_proba,
+                'y_pred_opt': y_pred_opt
+            }
+            
+            if verbose:
+                print(f"✅ Seuil optimal : {best_threshold:.3f}")
+                print(f"   F1-score : {f1_opt:.4f}")
+                print(f"   Précision : {precision_opt:.4f}")
+                print(f"   Rappel : {recall_opt:.4f}")
+                
+        except Exception as e:
+            if verbose:
+                print(f"❌ Erreur pour {imputation_name}: {e}")
+            results[imputation_name] = None
+    
+    return results
+
+
 def optimize_stacking_thresholds(X_train_knn, X_val_knn, y_train_knn, y_val_knn,
                                 X_train_mice, X_val_mice, y_train_mice, y_val_mice,
                                 optimization_method="f1", verbose=True):
