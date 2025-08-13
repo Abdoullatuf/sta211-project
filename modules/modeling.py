@@ -1246,6 +1246,17 @@ def analyze_feature_importance(model, X_train, y_train, X_eval, y_eval, feature_
                 idx = np.argmax(rfecv_selector.cv_results_['mean_test_score'])
                 best_score = float(rfecv_selector.cv_results_['mean_test_score'][idx])
 
+            # Vérification de la compatibilité des dimensions pour RFECV
+            if len(feature_names) != rfecv_selector.support_.shape[0]:
+                log.warning(f"Incompatibilité dimensions RFECV: {len(feature_names)} noms vs {rfecv_selector.support_.shape[0]} features")
+                # Ajuster la liste des noms de features
+                if len(feature_names) > rfecv_selector.support_.shape[0]:
+                    adjusted_names = feature_names[:rfecv_selector.support_.shape[0]]
+                else:
+                    adjusted_names = feature_names + [f"feature_{i}" for i in range(len(feature_names), rfecv_selector.support_.shape[0])]
+            else:
+                adjusted_names = feature_names
+
             results['rfecv'] = {
                 'n_features_optimal': int(rfecv_selector.n_features_),
                 'best_score': best_score,
@@ -1253,7 +1264,7 @@ def analyze_feature_importance(model, X_train, y_train, X_eval, y_eval, feature_
                 'ranking': rfecv_selector.ranking_.tolist(),
                 'grid_scores_mean': rfecv_selector.cv_results_['mean_test_score'].tolist(),
                 'grid_scores_std': rfecv_selector.cv_results_['std_test_score'].tolist(),
-                'selected_features': [feature_names[i] for i, s in enumerate(rfecv_selector.support_) if s]
+                'selected_features': [adjusted_names[i] for i, s in enumerate(rfecv_selector.support_) if s]
             }
             results['methods_applied'].append('rfecv')
             log.info(f"RFECV réussi pour {model_name}")
@@ -1264,25 +1275,31 @@ def analyze_feature_importance(model, X_train, y_train, X_eval, y_eval, feature_
     if 'permutation' in methods_to_run:
         try:
             # Vérifier la compatibilité des dimensions
-            if X_eval.shape[1] != model.n_features_in_:
+            model_features_expected = getattr(model, 'n_features_in_', X_eval.shape[1])
+            
+            if X_eval.shape[1] != model_features_expected:
                 log.warning(f"Dimensions incompatibles: X_eval a {X_eval.shape[1]} features, "
-                             f"mais le modèle attend {model.n_features_in_} features")
+                             f"mais le modèle attend {model_features_expected} features")
                 
                 # Essayer de redimensionner X_eval si possible
-                if X_eval.shape[1] > model.n_features_in_:
+                if X_eval.shape[1] > model_features_expected:
                     # Prendre les premières features
-                    X_eval_adjusted = X_eval[:, :model.n_features_in_]
-                    tmp_names = feature_names[:model.n_features_in_]
+                    X_eval_adjusted = X_eval[:, :model_features_expected]
+                    tmp_names = feature_names[:model_features_expected] if len(feature_names) >= model_features_expected else feature_names
                     log.info(f"X_eval redimensionné de {X_eval.shape[1]} à {X_eval_adjusted.shape[1]} features")
                 else:
                     # Ajouter des features factices si nécessaire
-                    padding = np.zeros((X_eval.shape[0], model.n_features_in_ - X_eval.shape[1]))
+                    padding = np.zeros((X_eval.shape[0], model_features_expected - X_eval.shape[1]))
                     X_eval_adjusted = np.hstack([X_eval, padding])
-                    tmp_names = feature_names + [f"feature_{i}" for i in range(len(feature_names), model.n_features_in_)]
+                    tmp_names = feature_names + [f"feature_{i}" for i in range(len(feature_names), model_features_expected)]
                     log.info(f"X_eval complété de {X_eval.shape[1]} à {X_eval_adjusted.shape[1]} features")
             else:
                 X_eval_adjusted = X_eval
                 tmp_names = feature_names
+
+            # S'assurer que tmp_names a la bonne longueur
+            if len(tmp_names) != X_eval_adjusted.shape[1]:
+                tmp_names = tmp_names[:X_eval_adjusted.shape[1]] if len(tmp_names) > X_eval_adjusted.shape[1] else tmp_names + [f"feature_{i}" for i in range(len(tmp_names), X_eval_adjusted.shape[1])]
 
             perm_result = permutation_importance(model, X_eval_adjusted, y_eval,
                                                  n_repeats=n_repeats_perm,
