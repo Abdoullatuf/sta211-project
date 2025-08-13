@@ -1182,6 +1182,37 @@ def build_comparison_table(json_results_paths, model_details):
 # 7. ANALYSE D'IMPORTANCE DES VARIABLES
 # =============================================================================
 
+def get_correct_feature_names(feature_cols_dict, imputation_method, X_data):
+    """
+    Récupère les noms de features corrects pour l'analyse d'importance.
+    
+    Args:
+        feature_cols_dict: Dictionnaire avec clés 'knn' et 'mice'
+        imputation_method: 'knn' ou 'mice'
+        X_data: Données features pour vérifier la compatibilité
+    
+    Returns:
+        List: Noms de features appropriés
+    """
+    if isinstance(feature_cols_dict, dict):
+        if imputation_method in feature_cols_dict:
+            feature_names = feature_cols_dict[imputation_method]
+        else:
+            log.warning(f"Méthode '{imputation_method}' non trouvée dans feature_cols_dict")
+            feature_names = None
+    else:
+        feature_names = feature_cols_dict
+    
+    # Vérifier la compatibilité
+    if feature_names is not None and len(feature_names) != X_data.shape[1]:
+        log.warning(f"Incompatibilité: {len(feature_names)} noms vs {X_data.shape[1]} features")
+        log.warning("Génération de noms génériques...")
+        feature_names = [f"feature_{i:03d}" for i in range(X_data.shape[1])]
+    elif feature_names is None:
+        feature_names = [f"feature_{i:03d}" for i in range(X_data.shape[1])]
+    
+    return feature_names
+
 def analyze_feature_importance(model, X_train, y_train, X_eval, y_eval, feature_names,
                                method='all', cv_folds=5, n_repeats_perm=20,
                                output_dir=None, model_name="model", save_results=True,
@@ -1190,11 +1221,23 @@ def analyze_feature_importance(model, X_train, y_train, X_eval, y_eval, feature_
     Analyse l'importance des variables pour un modèle entraîné en utilisant RFECV,
     Permutation Importance et SHAP (si disponible) avec gestion d'erreurs robuste.
     """
-    # On fait une copie de feature_names pour éviter les effets de bord
+    # Gestion robuste des feature_names
     if feature_names is None:
         feature_names = [f"feature_{i}" for i in range(X_train.shape[1])]
+    elif isinstance(feature_names, dict):
+        # Si un dictionnaire est passé, montrer les clés disponibles et lever une erreur claire
+        available_keys = list(feature_names.keys())
+        raise ValueError(f"feature_names doit être une liste, pas un dictionnaire. "
+                         f"Clés disponibles: {available_keys}. "
+                         f"Utilisez feature_names['{available_keys[0]}'] pour sélectionner la bonne méthode.")
     else:
         feature_names = list(feature_names)
+    
+    # Vérification finale de compatibilité
+    if len(feature_names) != X_train.shape[1]:
+        log.warning(f"Incompatibilité détectée: {len(feature_names)} noms fournis pour {X_train.shape[1]} features")
+        log.warning("Génération automatique de noms de features...")
+        feature_names = [f"feature_{i:03d}" for i in range(X_train.shape[1])]
 
     results = {
         'model_name': model_name,
