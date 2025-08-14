@@ -235,13 +235,13 @@ def _display_loading_info(df: pd.DataFrame, report: Dict):
         from IPython.display import display, Markdown
         
         # Titre
-        display(Markdown(f"# 📊 Chargement : `{report['file_info']['name']}`"))
+        display(Markdown(f" Chargement : `{report['file_info']['name']}`"))
         
         # Informations fichier
         file_info = report['file_info']
-        print(f"📁 **Taille** : {file_info['size_mb']} MB")
-        print(f"🔤 **Encodage** : {file_info['encoding']}")
-        print(f"🔄 **Séparateur** : '{file_info['separator']}'")
+        print(f" **Taille** : {file_info['size_mb']} MB")
+        print(f" **Encodage** : {file_info['encoding']}")
+        print(f" **Séparateur** : '{file_info['separator']}'")
         
         # Informations dataset
         data_info = report['data_info']
@@ -250,7 +250,7 @@ def _display_loading_info(df: pd.DataFrame, report: Dict):
         
         # Informations colonne cible
         target_info = report['target_column']
-        print(f"\n🎯 **Colonne cible '{target_info['name']}'** : ", end="")
+        print(f"\n **Colonne cible '{target_info['name']}'** : ", end="")
         if target_info['present']:
             info = target_info['info']
             print(f"✅ PRÉSENTE")
@@ -264,11 +264,11 @@ def _display_loading_info(df: pd.DataFrame, report: Dict):
             print(f"   Colonnes disponibles : {', '.join(data_info['columns'][:5])}{'...' if len(data_info['columns']) > 5 else ''}")
         
         # Aperçu des données
-        display(Markdown("## 👀 Aperçu"))
+        display(Markdown("Aperçu"))
         display(df.head(3))
         
         # Informations détaillées
-        display(Markdown("## 🔍 Informations Détaillées"))
+        display(Markdown(" Informations Détaillées"))
         print("Types de données :")
         type_counts = df.dtypes.value_counts()
         for dtype, count in type_counts.items():
@@ -366,7 +366,7 @@ def detect_and_remove_outliers(
 
     if verbose and remove:
         print(f"\n✅ Total supprimé : {initial_shape[0] - df_result.shape[0]} lignes")
-        print(f"🔢 Dimensions finales : {df_result.shape}")
+        print(f" Dimensions finales : {df_result.shape}")
 
     if save_path:
         save_path = Path(save_path)
@@ -407,13 +407,13 @@ class TransformationOptimaleMixte:
         self.models_dir.mkdir(parents=True, exist_ok=True)
         
         if verbose:
-            print(f"🏭 TransformationOptimaleMixte initialisée")
+            print("TransformationOptimaleMixte initialisée")
             print(f"📁 Répertoire des modèles: {self.models_dir}")
     
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """Applique la transformation optimale mixte complète."""
         if self.verbose:
-            print("🔧 TRANSFORMATION OPTIMALE MIXTE")
+            print(" TRANSFORMATION OPTIMALE MIXTE")
             print("=" * 50)
         
         self._diagnostic_initial(df)
@@ -428,7 +428,7 @@ class TransformationOptimaleMixte:
             offset = abs(df_x3['X3'].min()) + 1e-6
             df_x3['X3'] += offset
             if self.verbose:
-                print(f"⚠️ X3 corrigé : un offset de {offset:.6f} a été ajouté.")
+                print(f" X3 corrigé : un offset de {offset:.6f} a été ajouté.")
         
         df_result[self.variables_bc] = self.transformer_bc.fit_transform(df_x3)
         
@@ -449,19 +449,19 @@ class TransformationOptimaleMixte:
         joblib.dump(self.transformer_yj, self.models_dir / 'yeo_johnson_transformer.pkl')
         joblib.dump(self.transformer_bc, self.models_dir / 'box_cox_transformer.pkl')
         if self.verbose:
-            print(f"\n💾 Transformateurs sauvegardés dans : {self.models_dir}")
+            print(f"\n Transformateurs sauvegardés dans : {self.models_dir}")
             
     def _diagnostic_initial(self, df):
         """Diagnostic initial des asymétries."""
         if self.verbose:
-            print("\n📊 Diagnostic initial (Asymétrie):")
+            print("\n Diagnostic initial (Asymétrie):")
             for var in self.variables_yj + self.variables_bc:
                 print(f"  {var}: {df[var].skew():.3f}")
 
     def _rapport_transformation(self, df_original, df_transformed):
         """Rapport de transformation avec comparaison des asymétries."""
         if self.verbose:
-            print("\n📊 Rapport de Transformation :")
+            print("\n Rapport de Transformation :")
             for var in self.variables_yj + self.variables_bc:
                 original_skew = df_original[var].skew()
                 transformed_skew = df_transformed[f'{var}_transformed'].skew()
@@ -535,7 +535,7 @@ def handle_missing_values(
                     if knn_k is None:
                         knn_k = 5
                         if display_info:
-                            print("⚠️ k non spécifié, utilisation de k = 5 par défaut.")
+                            print(" k non spécifié, utilisation de k = 5 par défaut.")
 
                     imputer = KNNImputer(n_neighbors=knn_k)
                     df_proc[available_mar_cols] = imputer.fit_transform(df_proc[available_mar_cols])
@@ -569,11 +569,11 @@ def handle_missing_values(
                     imp_path = imputers_dir / f"imputer_{suffix}.pkl"
                     joblib.dump(imputer, imp_path)
                     if display_info:
-                        print(f"💾 Modèle d'imputation sauvegardé: {imp_path}")
+                        print(f" Modèle d'imputation sauvegardé: {imp_path}")
 
             except Exception as e:
                 print(f"❌ Erreur lors de l'imputation MAR: {e}")
-                print(f"🔄 Utilisation de la méthode de secours: {backup_method}")
+                print(f" Utilisation de la méthode de secours: {backup_method}")
                 median_fill(df_proc, available_mar_cols)
                 suffix = f'{backup_method}_backup'
 
@@ -582,28 +582,28 @@ def handle_missing_values(
             available_mcar_cols = [col for col in mcar_cols if col in df_proc.columns]
             if available_mcar_cols:
                 if display_info:
-                    print(f"📊 Variables MCAR à imputer avec médiane: {len(available_mcar_cols)}")
+                    print(f" Variables MCAR à imputer avec médiane: {len(available_mcar_cols)}")
                     for col in available_mcar_cols:
                         count = df_proc[col].isnull().sum()
                         print(f"   • {col}: {count} valeurs manquantes")
                 median_fill(df_proc, available_mcar_cols)
         else:
             if display_info:
-                print("ℹ️ Traitement des autres colonnes désactivé (treat_other_cols=False)")
+                print(" Traitement des autres colonnes désactivé (treat_other_cols=False)")
 
     else:
         raise ValueError("❌ strategy doit être 'all_median' ou 'mixed_mar_mcar'.")
 
     final_missing = df_proc.isnull().sum().sum()
     if display_info:
-        print("\n📊 Résumé de l'imputation:")
+        print("\n Résumé de l'imputation:")
         print(f"   • Valeurs manquantes avant: {initial_missing}")
         print(f"   • Valeurs manquantes après: {final_missing}")
         
         # Vérification des colonnes traitées
         if final_missing > 0:
             remaining_cols = df_proc.columns[df_proc.isnull().any()].tolist()
-            print(f"ℹ️ Colonnes avec valeurs manquantes restantes: {remaining_cols}")
+            print(f" Colonnes avec valeurs manquantes restantes: {remaining_cols}")
             for col in remaining_cols:
                 count = df_proc[col].isnull().sum()
                 print(f"   • {col}: {count} valeurs manquantes")
@@ -655,7 +655,7 @@ def find_optimal_k(
     if verbose:
         print("🔍 Recherche de la valeur optimale K pour l'imputation KNN")
         print("=" * 60)
-        print(f"📊 Colonnes à évaluer      : {columns_to_impute}")
+        print(f" Colonnes à évaluer      : {columns_to_impute}")
         print(f"🎯 Plage K à tester        : {list(k_range)}")
         print(f"🔄 Validation croisée      : {cv_folds} folds")
         print(f"📏 Métrique d'évaluation  : {metric.upper()}")
@@ -763,7 +763,7 @@ def find_optimal_k(
         print("🎯 RÉSULTATS DE L'OPTIMISATION")
         print("=" * 60)
         print(f"🏆 K optimal              : {optimal_k}")
-        print(f"📊 Meilleur score ({metric.upper()})  : {best_score:.4f}")
+        print(f" Meilleur score ({metric.upper()})  : {best_score:.4f}")
         print(f"⏱️  Temps de calcul        : {computation_time:.2f}s")
 
     return {
@@ -786,14 +786,14 @@ def analyze_continuous_variables(df: pd.DataFrame, continuous_cols: List[str], t
     - Matrice de corrélation + heatmap
     """
     summary_stats = df[continuous_cols].describe()
-    print("📊 Statistiques descriptives :")
+    print(" Statistiques descriptives :")
     print(summary_stats)
 
     skew_kurtosis_results = {}
     outliers_summary = {}
     correlations = {}
 
-    print("\n📊 Analyse de la distribution :")
+    print("\n Analyse de la distribution :")
     for col in continuous_cols:
         data = df[col].dropna()
         skew = stats.skew(data)
@@ -831,7 +831,7 @@ def analyze_continuous_variables(df: pd.DataFrame, continuous_cols: List[str], t
         print(f"  - {col}: {corr:.4f}")
         correlations[col] = corr
 
-    print("\n📊 Matrice de corrélation entre variables continues :")
+    print("\n Matrice de corrélation entre variables continues :")
     corr_matrix = df[continuous_cols].corr()
     print(corr_matrix)
 
@@ -1057,7 +1057,7 @@ def drop_correlated_duplicates(
 
     # Résumé
     if summary:
-        print(f"\n📊 Résumé de la réduction :")
+        print(f"\n Résumé de la réduction :")
         print(f"🔻 {len(to_drop)} colonnes binaires supprimées (corrélées)")
         print(f"✅ {len(to_keep)} colonnes binaires conservées (1 par groupe)")
         print(f"➕ {len(untouched)} colonnes binaires non corrélées conservées")
@@ -1120,7 +1120,7 @@ def prepare_final_dataset_with_correlation_reduction(
         )
         
         if verbose:
-            print(f"📊 {len(correlated_groups)} groupes de variables corrélées identifiés")
+            print(f" {len(correlated_groups)} groupes de variables corrélées identifiés")
         
         # 3. Réduction de dimensionnalité
         df_reduced, dropped_cols, kept_cols = drop_correlated_duplicates(
@@ -1136,7 +1136,7 @@ def prepare_final_dataset_with_correlation_reduction(
         dropped_cols = []
         kept_cols = []
         if verbose:
-            print("ℹ️ Pas assez de variables binaires pour l'analyse de corrélation")
+            print(" Pas assez de variables binaires pour l'analyse de corrélation")
     
     # 4. Métadonnées finales
     metadata = {
@@ -1172,7 +1172,7 @@ def prepare_final_dataset_with_correlation_reduction(
     if verbose:
         print("\n" + "=" * 70)
         print("✅ Preprocessing complet terminé avec succès")
-        print(f"🔢 Réduction : {df.shape[1]} → {df_reduced.shape[1]} colonnes ({metadata['reduction_ratio']:.1f}% réduit)")
+        print(f" Réduction : {df.shape[1]} → {df_reduced.shape[1]} colonnes ({metadata['reduction_ratio']:.1f}% réduit)")
     
     return df_reduced, metadata
 
@@ -1197,8 +1197,8 @@ def apply_collinearity_filter(
         DataFrame filtré
     """
     if verbose:
-        print(f"📊 DataFrame initial: {df.shape}")
-        print(f"🗑️ Colonnes à supprimer: {len(cols_to_drop)}")
+        print(f" DataFrame initial: {df.shape}")
+        print(f" Colonnes à supprimer: {len(cols_to_drop)}")
         if cols_to_drop:
             print(f"   Variables: {cols_to_drop[:10]}{'...' if len(cols_to_drop) > 10 else ''}")
     
@@ -1207,11 +1207,11 @@ def apply_collinearity_filter(
     df_filtered = df.drop(columns=existing_cols_to_drop)
     
     if verbose:
-        print(f"📊 DataFrame filtré: {df_filtered.shape}")
+        print(f" DataFrame filtré: {df_filtered.shape}")
         print(f"✅ {len(existing_cols_to_drop)} colonnes supprimées")
         if len(existing_cols_to_drop) != len(cols_to_drop):
             missing_cols = set(cols_to_drop) - set(existing_cols_to_drop)
-            print(f"⚠️ {len(missing_cols)} colonnes introuvables: {list(missing_cols)[:5]}{'...' if len(missing_cols) > 5 else ''}")
+            print(f" {len(missing_cols)} colonnes introuvables: {list(missing_cols)[:5]}{'...' if len(missing_cols) > 5 else ''}")
     
     return df_filtered
 
