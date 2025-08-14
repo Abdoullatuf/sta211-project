@@ -40,6 +40,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
 from sklearn.feature_selection import RFECV
 from sklearn.inspection import permutation_importance
+from sklearn.ensemble import GradientBoostingClassifier
 from xgboost import XGBClassifier
 
 # Configuration du logging
@@ -445,6 +446,139 @@ def optimize_classification_threshold(y_true: np.ndarray,
     # Générer une gamme de seuils
     thresholds = np.arange(0.1, 1.0, 0.01)
     
+    scores = []
+
+
+# =============================================================================
+# 5. SÉLECTION DE VARIABLES AVEC RFECV
+# =============================================================================
+
+def perform_rfecv_selection(data_splits: Dict, 
+                          imputation_method: str, 
+                          save_dir_base: Path) -> Dict:
+    """
+    Effectue la sélection RFECV pour un type d'imputation donné.
+    
+    Args:
+        data_splits: Dict contenant X_train, y_train
+        imputation_method: str ("knn" ou "mice") 
+        save_dir_base: Path - répertoire de base pour sauvegarde
+    
+    Returns:
+        dict: {"selector": selector_fitted, "selected_features": list, "scores": array}
+    """
+    # Données
+    X = data_splits["X_train"]
+    y = data_splits["y_train"]
+    
+    print(f"🔍 RFECV pour {imputation_method.upper()}...")
+    
+    # Estimateur RFECV
+    estimator = GradientBoostingClassifier(
+        n_estimators=100,
+        learning_rate=0.05,
+        max_depth=4,
+        min_samples_split=10,
+        min_samples_leaf=5,
+        subsample=0.8,
+        random_state=42
+    )
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    selector = RFECV(estimator=estimator, step=1, cv=cv, scoring='f1', n_jobs=-1, verbose=0)
+    selector.fit(X, y)
+    
+    # Résultats
+    mask = selector.support_
+    selected_features = X.columns[mask].tolist()
+    
+    # Sauvegarde
+    rfecv_dir = save_dir_base / "notebook2" / imputation_method
+    rfecv_dir.mkdir(parents=True, exist_ok=True)
+    
+    save_artifact(selector, f"rfecv_selector_{imputation_method}.pkl", rfecv_dir)
+    save_artifact(selected_features, f"selected_features_{imputation_method}.pkl", rfecv_dir)
+    
+    print(f"✅ {imputation_method.upper()}: {len(selected_features)} variables sélectionnées")
+    print("🔝 Top 10 :", selected_features[:10])
+    
+    return {
+        "selector": selector,
+        "selected_features": selected_features,
+        "scores": selector.cv_results_["mean_test_score"]
+    }
+
+
+def plot_rfecv_results(results_dict: Dict, imputation_method: str) -> None:
+    """
+    Trace les résultats RFECV.
+    
+    Args:
+        results_dict: Résultats de perform_rfecv_selection
+        imputation_method: Nom de la méthode d'imputation
+    """
+    selector = results_dict["selector"]
+    scores = results_dict["scores"]
+    
+    optimal_num_features = selector.n_features_
+    optimal_score = max(scores)
+    
+    plt.figure(figsize=(8, 5))
+    plt.plot(range(1, len(scores) + 1), scores, marker='o', label='Score F1')
+    plt.axvline(optimal_num_features, color='red', linestyle='--', 
+                label=f'Optimal: {optimal_num_features} variables')
+    plt.scatter(optimal_num_features, optimal_score, color='red')
+    plt.text(optimal_num_features + 0.5, optimal_score, f'{optimal_score:.3f}', color='blue')
+    plt.xlabel("Nombre de variables sélectionnées")
+    plt.ylabel("Score F1 moyen (validation croisée)")
+    plt.title(f"Évolution du score F1 - {imputation_method.upper()}")
+    plt.legend()
+    plt.grid(True, linestyle="--", linewidth=0.5)
+    plt.tight_layout()
+    plt.show()
+
+
+def save_reduced_datasets(splits_dict: Dict, 
+                         rfecv_results_dict: Dict, 
+                         save_dir_base: Path,
+                         imputation_methods: List[str] = ["knn", "mice"]) -> None:
+    """
+    Sauvegarde les jeux de données réduits avec les variables sélectionnées par RFECV.
+    
+    Args:
+        splits_dict: Dict contenant les splits pour chaque méthode
+        rfecv_results_dict: Dict contenant les résultats RFECV 
+        save_dir_base: Répertoire de base pour la sauvegarde
+        imputation_methods: Liste des méthodes d'imputation à traiter
+    """
+    for method in imputation_methods:
+        print(f"💾 Sauvegarde des datasets réduits - {method.upper()}")
+        
+        # Récupérer les features sélectionnées
+        selected_features = rfecv_results_dict[method]["selected_features"]
+        
+        # Dossier de sauvegarde
+        reduced_dir = save_dir_base / "notebook2" / method / "reduced"
+        reduced_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Splits pour cette méthode
+        splits_method = splits_dict[method]
+        
+        # Sauvegarde des jeux de données réduits
+        for subset_name in ["train", "val", "test"]:
+            X_subset = splits_method[f"X_{subset_name}"][selected_features]
+            y_subset = splits_method[f"y_{subset_name}"]
+            
+            save_artifact({"X": X_subset, "y": y_subset}, 
+                         f"{method}_{subset_name}_reduced.pkl", 
+                         reduced_dir)
+            print(f"  ✅ {subset_name.capitalize()} réduit sauvegardé")
+        
+        # Sauvegarde des noms de variables sélectionnées
+        save_artifact(selected_features, f"selected_columns_{method}.pkl", reduced_dir)
+        print(f"  ✅ Variables sélectionnées ({len(selected_features)}) sauvegardées")
+        print("-" * 50)
+
+
     scores = []
     best_threshold = 0.5
     best_score = 0.0
