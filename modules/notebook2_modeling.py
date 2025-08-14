@@ -579,57 +579,6 @@ def save_reduced_datasets(splits_dict: Dict,
         print("-" * 50)
 
 
-    scores = []
-    best_threshold = 0.5
-    best_score = 0.0
-    
-    for threshold in thresholds:
-        y_pred = (y_proba >= threshold).astype(int)
-        
-        if metric == 'f1':
-            score = f1_score(y_true, y_pred)
-        elif metric == 'precision':
-            score = precision_score(y_true, y_pred)
-        elif metric == 'recall':
-            score = recall_score(y_true, y_pred)
-        else:
-            raise ValueError(f"Métrique '{metric}' non supportée")
-        
-        scores.append(score)
-        
-        if score > best_score:
-            best_score = score
-            best_threshold = threshold
-    
-    # Métriques avec le meilleur seuil
-    y_pred_optimal = (y_proba >= best_threshold).astype(int)
-    
-    optimal_metrics = {
-        'f1': f1_score(y_true, y_pred_optimal),
-        'precision': precision_score(y_true, y_pred_optimal),
-        'recall': recall_score(y_true, y_pred_optimal),
-        'auc_roc': roc_auc_score(y_true, y_proba)
-    }
-    
-    if verbose:
-        print(f"🏆 Seuil optimal: {best_threshold:.3f}")
-        print(f"📈 Score optimisé ({metric}): {best_score:.4f}")
-        print("📊 Métriques avec seuil optimal:")
-        for metric_name, value in optimal_metrics.items():
-            print(f"   • {metric_name}: {value:.4f}")
-    
-    results = {
-        'best_threshold': best_threshold,
-        'best_score': best_score,
-        'optimized_metric': metric,
-        'threshold_scores': list(zip(thresholds, scores)),
-        'optimal_metrics': optimal_metrics,
-        'y_pred_optimal': y_pred_optimal
-    }
-    
-    return results
-
-
 # =============================================================================
 # 5. ÉVALUATION ET COMPARAISON DES MODÈLES
 # =============================================================================
