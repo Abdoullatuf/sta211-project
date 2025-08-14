@@ -124,6 +124,15 @@ class PredictionPipeline:
         
         df = features.copy()
         
+        # Validation et conversion des types de données
+        logger.info("Validation des types de données avant preprocessing...")
+        for col in df.columns:
+            if not pd.api.types.is_numeric_dtype(df[col]):
+                logger.warning(f"Colonne {col} n'est pas numérique, conversion...")
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        logger.info(f"Types après validation : {dict(df.dtypes)}")
+        
         # Définir les chemins selon la méthode d'imputation
         if imputation_method == "knn":
             base_path = self.outputs_dir / "modeling" / "notebook1" / "knn"
@@ -134,8 +143,16 @@ class PredictionPipeline:
         median_path = base_path / "median_imputer_X4.pkl"
         if median_path.exists():
             median_value = joblib.load(median_path)
-            df['X4'] = df['X4'].fillna(median_value)
-            logger.info(f"X4 imputé avec médiane : {median_value}")
+            # S'assurer que median_value est numérique
+            try:
+                median_value = float(median_value)
+                # S'assurer que X4 est numérique
+                if not pd.api.types.is_numeric_dtype(df['X4']):
+                    df['X4'] = pd.to_numeric(df['X4'], errors='coerce')
+                df['X4'] = df['X4'].fillna(median_value)
+                logger.info(f"X4 imputé avec médiane : {median_value}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Erreur lors de l'imputation de X4: {e}, ignoré")
         
         # 2. Imputation des variables continues X1, X2, X3
         continuous_cols = ['X1', 'X2', 'X3']
