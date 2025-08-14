@@ -563,15 +563,15 @@ def save_reduced_datasets(splits_dict: Dict,
         # Splits pour cette méthode
         splits_method = splits_dict[method]
         
-        # Sauvegarde des jeux de données réduits
+        # Sauvegarde des jeux de données réduits (structure 6 splits)
         for subset_name in ["train", "val", "test"]:
             X_subset = splits_method[f"X_{subset_name}"][selected_features]
             y_subset = splits_method[f"y_{subset_name}"]
             
-            save_artifact({"X": X_subset, "y": y_subset}, 
-                         f"{method}_{subset_name}_reduced.pkl", 
-                         reduced_dir)
-            print(f"  ✅ {subset_name.capitalize()} réduit sauvegardé")
+            # Sauvegarde séparée de X et y pour cohérence avec splits complets
+            save_artifact(X_subset, f"X_{subset_name}_reduced.pkl", reduced_dir)
+            save_artifact(y_subset, f"y_{subset_name}_reduced.pkl", reduced_dir)
+            print(f"  ✅ {subset_name.capitalize()} réduit sauvegardé (X et y séparés)")
         
         # Sauvegarde des noms de variables sélectionnées
         save_artifact(selected_features, f"selected_columns_{method}.pkl", reduced_dir)
