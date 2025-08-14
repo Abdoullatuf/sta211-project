@@ -236,8 +236,31 @@ class PredictionPipeline:
         
         # Charger le fichier CSV
         test_path = self.data_dir / "raw" / "data_test.csv"
+        logger.info(f"Chargement des données depuis : {test_path}")
+        
+        # Lire d'abord pour voir la structure
         df_test = pd.read_csv(test_path)
-        logger.info(f"Données chargées : {df_test.shape}")
+        logger.info(f"Données chargées : {df_test.shape[0]} lignes, {df_test.shape[1]} colonnes")
+        
+        # Convertir toutes les colonnes (sauf la première qui pourrait être l'ID) en numérique
+        for col in df_test.columns:
+            if col not in ['id']:  # Garder les IDs comme strings
+                df_test[col] = pd.to_numeric(df_test[col], errors='coerce')
+        
+        # Vérifier les conversions
+        numeric_cols = df_test.select_dtypes(include=[np.number]).columns
+        logger.info(f"Colonnes numériques converties : {len(numeric_cols)}")
+        
+        # Vérifier s'il y a des NaN après conversion (sauf pour les valeurs manquantes légitimes)
+        problematic_cols = []
+        for col in df_test.columns:
+            if col not in ['id'] and df_test[col].isna().any():
+                na_count = df_test[col].isna().sum()
+                if na_count < len(df_test) * 0.9:  # Si moins de 90% de NaN, c'est un problème de conversion
+                    problematic_cols.append(f"{col}: {na_count} NaN")
+        
+        if problematic_cols:
+            logger.warning(f"Colonnes avec NaN après conversion : {problematic_cols[:5]}")  # Limite à 5 pour le log
         
         # Séparer features et IDs
         if 'id' in df_test.columns:
