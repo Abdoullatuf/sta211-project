@@ -747,3 +747,45 @@ def preprocess_complete_pipeline(df: pd.DataFrame,
     print(f"✅ Étapes: {' → '.join(results['steps_completed'])}")
     
     return results
+
+
+# =============================================================================
+# 8. FONCTIONS DE COMPATIBILITÉ
+# =============================================================================
+
+def appliquer_transformation_optimale(df: pd.DataFrame,
+                                     continuous_cols: List[str] = None,
+                                     method_mapping: Dict[str, str] = None,
+                                     save_transformers: bool = True) -> Tuple[pd.DataFrame, Dict]:
+    """
+    Fonction de compatibilité pour l'ancien nom 'appliquer_transformation_optimale'.
+    
+    ⚠️ DEPRECATED: Utilisez 'apply_optimal_transformations' à la place.
+    
+    Cette fonction maintient la compatibilité avec les anciens notebooks.
+    """
+    
+    import warnings
+    warnings.warn(
+        "appliquer_transformation_optimale est deprecated. "
+        "Utilisez apply_optimal_transformations à la place.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
+    # Si aucune colonne spécifiée, détecter automatiquement les colonnes numériques
+    if continuous_cols is None:
+        continuous_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        print(f"🔍 Colonnes continues détectées automatiquement: {continuous_cols}")
+    
+    # Si aucun mapping spécifié, utiliser Yeo-Johnson par défaut
+    if method_mapping is None:
+        method_mapping = {col: 'yeo-johnson' for col in continuous_cols}
+        print(f"🔧 Méthode par défaut: Yeo-Johnson pour toutes les colonnes")
+    
+    return apply_optimal_transformations(
+        df=df,
+        continuous_cols=continuous_cols,
+        method_mapping=method_mapping,
+        save_transformers=save_transformers
+    )
