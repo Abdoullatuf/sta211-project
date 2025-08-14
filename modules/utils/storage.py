@@ -14,7 +14,7 @@ from modules.config import cfg
 log = logging.getLogger(__name__)
 
 
-def save_artifact(obj, filename: str, subdir: Path) -> Path:
+def save_artifact(obj, filename: str, subdir: Path, verbose: bool = True) -> Path:
     """
     Sauvegarde un objet (pickle ou JSON) dans un sous-dossier du projet.
     
@@ -22,6 +22,7 @@ def save_artifact(obj, filename: str, subdir: Path) -> Path:
         obj: Objet à sauvegarder
         filename: Nom du fichier avec extension
         subdir: Sous-répertoire (doit provenir de cfg.paths)
+        verbose: Si True, affiche un message de confirmation
         
     Returns:
         Path: Chemin complet du fichier sauvegardé
@@ -36,7 +37,8 @@ def save_artifact(obj, filename: str, subdir: Path) -> Path:
     else:
         joblib.dump(obj, path)
     
-    log.info(f"✅ Sauvegarde de {path}")
+    if verbose:
+        log.info(f"✅ Sauvegarde de {path}")
     return path
 
 

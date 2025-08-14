@@ -491,12 +491,12 @@ def perform_rfecv_selection(data_splits: Dict,
     mask = selector.support_
     selected_features = X.columns[mask].tolist()
     
-    # Sauvegarde
+    # Sauvegarde (silencieuse pour éviter répétition avec les logs automatiques)
     rfecv_dir = save_dir_base / "notebook2" / imputation_method
     rfecv_dir.mkdir(parents=True, exist_ok=True)
     
-    save_artifact(selector, f"rfecv_selector_{imputation_method}.pkl", rfecv_dir)
-    save_artifact(selected_features, f"selected_features_{imputation_method}.pkl", rfecv_dir)
+    save_artifact(selector, f"rfecv_selector_{imputation_method}.pkl", rfecv_dir, verbose=False)
+    save_artifact(selected_features, f"selected_features_{imputation_method}.pkl", rfecv_dir, verbose=False)
     
     print(f"✅ {imputation_method.upper()}: {len(selected_features)} variables sélectionnées")
     print("🔝 Top 10 :", selected_features[:10])
