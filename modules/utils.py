@@ -241,11 +241,52 @@ class PredictionPipeline:
         # Lire d'abord pour voir la structure
         df_test = pd.read_csv(test_path)
         logger.info(f"Données chargées : {df_test.shape[0]} lignes, {df_test.shape[1]} colonnes")
+        logger.info(f"Colonnes détectées : {list(df_test.columns)}")
+        logger.info(f"Premières valeurs de la première colonne : {df_test.iloc[0:3, 0].tolist()}")
+        
+        # Si une seule colonne détectée, essayer d'autres méthodes de parsing
+        if df_test.shape[1] == 1:
+            logger.warning("Une seule colonne détectée, tentative de parsing alternatif...")
+            
+            # Essayer avec différents séparateurs
+            for sep in [',', ';', '\t', ' ']:
+                try:
+                    df_alt = pd.read_csv(test_path, sep=sep)
+                    if df_alt.shape[1] > 1:
+                        logger.info(f"Parsing réussi avec séparateur '{sep}': {df_alt.shape[1]} colonnes")
+                        df_test = df_alt
+                        break
+                except:
+                    continue
+            
+            # Si toujours une seule colonne, essayer de split la première colonne
+            if df_test.shape[1] == 1:
+                first_col_name = df_test.columns[0]
+                sample_value = str(df_test.iloc[0, 0])
+                logger.info(f"Tentative de split sur la première colonne. Valeur exemple: {sample_value}")
+                
+                # Détecter le pattern de séparation
+                for sep in ['\t', ',', ';', ' ']:
+                    if sep in sample_value:
+                        logger.info(f"Séparateur '{sep}' détecté dans les données")
+                        # Split et créer nouvelles colonnes
+                        split_data = df_test[first_col_name].str.split(sep, expand=True)
+                        # Générer noms de colonnes
+                        split_data.columns = [f'X{i+1}' for i in range(split_data.shape[1])]
+                        df_test = split_data
+                        logger.info(f"Données splitées en {df_test.shape[1]} colonnes: {list(df_test.columns)}")
+                        break
+        
+        logger.info(f"Structure finale après parsing : {df_test.shape[0]} lignes, {df_test.shape[1]} colonnes")
+        logger.info(f"Colonnes finales : {list(df_test.columns)}")
         
         # Convertir toutes les colonnes (sauf la première qui pourrait être l'ID) en numérique
         for col in df_test.columns:
             if col not in ['id']:  # Garder les IDs comme strings
-                df_test[col] = pd.to_numeric(df_test[col], errors='coerce')
+                try:
+                    df_test[col] = pd.to_numeric(df_test[col], errors='coerce')
+                except Exception as e:
+                    logger.warning(f"Impossible de convertir la colonne {col} en numérique: {e}")
         
         # Vérifier les conversions
         numeric_cols = df_test.select_dtypes(include=[np.number]).columns
