@@ -32,15 +32,6 @@ from sklearn.exceptions import ConvergenceWarning, FitFailedWarning
 
 RANDOM_STATE: int = 42
 PROJECT_NAME: str = "STA211 Ads"
-DEFAULT_PATHS = {
-    "ROOT_DIR": None,
-    "MODULE_DIR": "modules",
-    "RAW_DATA_DIR": "data/raw",
-    "DATA_PROCESSED": "data/processed",
-    "OUTPUTS_DIR": "outputs",
-    "FIGURES_DIR": "outputs/figures",
-    "THRESHOLDS_DIR": "outputs/modeling/thresholds"
-}
 
 # ============================================================================
 # CONFIGURATION DE BASE
@@ -56,7 +47,6 @@ class ProjectConfig:
     test_size: float = 0.2
     scoring: str = "f1"
     cv: int = 5
-    model_dir: Optional[Path] = None # Accept model_dir here
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -65,110 +55,118 @@ class ProjectConfig:
         with open(path, 'w') as f:
             json.dump(self.to_dict(), f, indent=4)
 
+
 @dataclass
 class PathsConfig:
     """Configuration des chemins du projet"""
-    ROOT_DIR: Path
-    MODULE_DIR: Path
-    RAW_DATA_DIR: Path
-    DATA_PROCESSED: Path
-    OUTPUTS_DIR: Path
-    FIGURES_DIR: Path
-    THRESHOLDS_DIR: Path
-    MODELS_DIR: Path # Add MODELS_DIR here
+    
+    def __init__(self, root: Path):
+        self.root = root
+        
+        # Répertoires de données
+        self.data = self.root / "data"
+        self.raw = self.data / "raw"
+        self.processed = self.data / "processed"
+        
+        # Répertoires de sortie
+        self.outputs = self.root / "outputs"
+        self.figures = self.outputs / "figures"
+        
+        # Répertoires de sauvegarde des artefacts
+        self.artifacts = self.root / "artifacts"
+        self.imputers = self.artifacts / "imputers"
+        self.transformers = self.artifacts / "transformers"
+        self.selectors = self.artifacts / "selectors"
+        self.models = self.artifacts / "models"
+        
+        # Créer les répertoires nécessaires
+        self._create_directories()
+    
+    def _create_directories(self):
+        """Crée les répertoires nécessaires"""
+        for path_attr in ['outputs', 'figures', 'artifacts', 'imputers', 
+                         'transformers', 'selectors', 'models', 'processed']:
+            path = getattr(self, path_attr)
+            path.mkdir(parents=True, exist_ok=True)
 
     def to_dict(self) -> dict:
-        return {k: str(v) for k, v in asdict(self).items()}
+        return {k: str(v) for k, v in self.__dict__.items() if isinstance(v, Path)}
 
-    def save_json(self, path: Union[str, Path]) -> None:
-        with open(path, 'w') as f:
-            json.dump(self.to_dict(), f, indent=4)
 
-@dataclass
 class Config:
     """Classe de configuration principale"""
-    project: ProjectConfig
-    paths: PathsConfig
-    logger: logging.Logger
-
+    
+    def __init__(self):
+        self.project = ProjectConfig()
+        
+        # Détection de la racine du projet
+        self.root = self._find_project_root()
+        self.paths = PathsConfig(self.root)
+        
+        # Configuration du logging
+        self._setup_logging()
+        self._setup_environment()
+    
+    def _find_project_root(self, marker_file: str = '.git') -> Path:
+        """Trouve la racine du projet en cherchant un marqueur."""
+        current_dir = Path.cwd()
+        for parent in [current_dir] + list(current_dir.parents):
+            if (parent / marker_file).exists() or (parent / '.project_root').exists():
+                return parent
+        return current_dir
+    
+    def _setup_logging(self):
+        """Configure le logging du projet"""
+        # Configuration basique du logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
+    
+    def get_logger(self, name: str) -> logging.Logger:
+        """Retourne un logger configuré pour un module"""
+        return logging.getLogger(name)
+    
+    def _setup_environment(self):
+        """Configure l'environnement (warnings, etc.)"""
+        # Configuration des warnings
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
+        warnings.filterwarnings("ignore", category=FitFailedWarning)
+        warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
+        
+        # Configuration de numpy et pandas
+        np.random.seed(self.project.random_state)
+        pd.set_option('display.max_columns', None)
+        pd.set_option('display.width', None)
+        pd.set_option('display.max_colwidth', 50)
+        
+        # Configuration de matplotlib
+        plt.style.use('seaborn-v0_8')
+        plt.rcParams['figure.figsize'] = (12, 8)
+        plt.rcParams['font.size'] = 11
+    
     def to_dict(self) -> dict:
         return {
             "project": self.project.to_dict(),
             "paths": self.paths.to_dict()
         }
-
-# ============================================================================
-# INITIALISATION DES CHEMINS
-# ============================================================================
-
-def _find_project_root(marker_file: str = '.git') -> Path:
-    """Tente de trouver la racine du projet en cherchant un marqueur."""
-    current_dir = Path.cwd()
-    for parent in [current_dir] + list(current_dir.parents):
-        if (parent / marker_file).exists() or (parent / '.project_root').exists():
-            return parent
-    # Fallback if no marker found
-    return current_dir
-
-# Get the project_path from the global scope if available (from ProjectMetadata)
-PROJECT_ROOT = globals().get('project_path', _find_project_root())
-
-# ============================================================================
-# MISE EN PLACE DES CHEMINS
-# ============================================================================
-
-# Use the PROJECT_ROOT from the global scope or the fallback
-ROOT_DIR = PROJECT_ROOT
-MODULE_DIR = ROOT_DIR / DEFAULT_PATHS["MODULE_DIR"]
-RAW_DATA_DIR = ROOT_DIR / DEFAULT_PATHS["RAW_DATA_DIR"]
-DATA_PROCESSED = ROOT_DIR / DEFAULT_PATHS["DATA_PROCESSED"]
-OUTPUTS_DIR = ROOT_DIR / DEFAULT_PATHS["OUTPUTS_DIR"]
-FIGURES_DIR = ROOT_DIR / DEFAULT_PATHS["FIGURES_DIR"]
-THRESHOLDS_DIR = ROOT_DIR / DEFAULT_PATHS["THRESHOLDS_DIR"]
-MODELS_DIR = ROOT_DIR / "models" # Define MODELS_DIR here
-
-# Ensure output directories exist
-OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-THRESHOLDS_DIR.mkdir(parents=True, exist_ok=True)
-MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    def save_config(self, filename: str = "project_config.json"):
+        """Sauvegarde la configuration dans un fichier JSON"""
+        config_path = self.paths.outputs / filename
+        with open(config_path, 'w') as f:
+            json.dump(self.to_dict(), f, indent=4)
+        self.logger.info(f"Configuration sauvegardée : {config_path}")
 
 
 # ============================================================================
-# CONFIGURATION DU LOGGER
+# INSTANCIATION GLOBALE
 # ============================================================================
 
-# Basic logger setup (can be expanded)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Instance globale de configuration
+cfg = Config()
 
-# ============================================================================
-# INSTANCIATION DE LA CONFIGURATION GLOBALE
-# ============================================================================
-
-# Instantiate the Config and assign it to cfg so it can be imported
-cfg = Config(
-    project=ProjectConfig(model_dir=MODELS_DIR), # Pass MODELS_DIR to ProjectConfig
-    paths=PathsConfig(
-        ROOT_DIR=ROOT_DIR,
-        MODULE_DIR=MODULE_DIR,
-        RAW_DATA_DIR=RAW_DATA_DIR,
-        DATA_PROCESSED=DATA_PROCESSED,
-        OUTPUTS_DIR=OUTPUTS_DIR,
-        FIGURES_DIR=FIGURES_DIR,
-        THRESHOLDS_DIR=THRESHOLDS_DIR,
-        MODELS_DIR=MODELS_DIR # Pass MODELS_DIR to PathsConfig
-    ),
-    logger=logger
-)
-
-# Optional: Add a simple print to confirm config is loaded
-print("✅ Configuration chargée depuis config.py")
-
-# ============================================================================
-# CONFIGURATION DES WARNINGS
-# ============================================================================
-
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
-warnings.filterwarnings("ignore", category=FitFailedWarning)
-warnings.filterwarnings("ignore", category=UserWarning, module='sklearn') # Ignore general sklearn warnings
+# Message de confirmation
+cfg.logger.info("✅ Configuration chargée depuis config.py")
+cfg.logger.info(f"📁 Racine du projet: {cfg.root}")
