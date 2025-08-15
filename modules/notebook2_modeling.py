@@ -583,6 +583,76 @@ def save_reduced_datasets(splits_dict: Dict,
 # 5. ÉVALUATION ET COMPARAISON DES MODÈLES
 # =============================================================================
 
+def format_results_for_comparison(res_df: pd.DataFrame, imputation_method: str) -> pd.DataFrame:
+    """
+    Formate un DataFrame de résultats d'évaluation pour la comparaison.
+    
+    Args:
+        res_df: DataFrame avec colonnes model, f1_val, precision, recall, auc, gap
+        imputation_method: Nom de la méthode d'imputation (ex: "KNN - Complet")
+    
+    Returns:
+        DataFrame formaté pour la comparaison
+    """
+    df = res_df.copy().rename(columns={"model": "Modèle"})
+
+    rename_cols = {
+        "f1_val": "F1-score",
+        "precision": "Précision", 
+        "recall": "Rappel",
+        "auc": "AUC",
+        "gap": "Gap CV/Val"
+    }
+    df = df.rename(columns=rename_cols)
+
+    # Colonnes à garder
+    keep_cols = ["Modèle", "F1-score", "Précision", "Rappel", "AUC", "Gap CV/Val"]
+    df = df[keep_cols]
+    df["Méthode d'imputation"] = imputation_method
+    
+    return df
+
+
+def create_comparison_table(results_dict: Dict[str, pd.DataFrame], 
+                          save_dir: Optional[Path] = None) -> pd.DataFrame:
+    """
+    Crée un tableau de comparaison des performances entre différentes méthodes.
+    
+    Args:
+        results_dict: Dict avec clés comme méthode et valeurs comme DataFrames de résultats
+        save_dir: Répertoire pour sauvegarder le tableau (optionnel)
+    
+    Returns:
+        DataFrame de comparaison formaté et trié
+    """
+    comparison_dfs = []
+    
+    method_labels = {
+        "knn_full": "KNN - Complet",
+        "knn_reduced": "KNN - Réduit", 
+        "mice_full": "MICE - Complet",
+        "mice_reduced": "MICE - Réduit"
+    }
+    
+    for method_key, results_df in results_dict.items():
+        label = method_labels.get(method_key, method_key)
+        formatted_df = format_results_for_comparison(results_df, label)
+        comparison_dfs.append(formatted_df)
+    
+    # Concaténation et tri
+    comparison = (pd.concat(comparison_dfs, ignore_index=True)
+                   .sort_values("F1-score", ascending=False)
+                   .reset_index(drop=True))
+    
+    # Sauvegarde si demandée
+    if save_dir:
+        save_artifact(comparison.to_dict("records"), 
+                     "results_comparison_knn_mice.json", save_dir)
+        comparison.to_csv(save_dir / "results_comparison_knn_mice.csv", index=False)
+        log.info(f"✅ Tableau comparatif sauvegardé dans {save_dir}")
+    
+    return comparison
+
 def evaluate_model_performance(y_true: np.ndarray,
                               y_pred: np.ndarray,
                               y_proba: np.ndarray,
