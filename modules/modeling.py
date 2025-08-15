@@ -83,7 +83,7 @@ def optimize_multiple(pipes: dict, X_val, y_val, *, plot_each=False, show_df=Tru
             metr = optimize_threshold(pipe, X_val, y_val, plot=plot_each, label=name)
             metr["model"] = name
             rows.append(metr)
-            print(f"✅ {name:<12}: F1={metr['f1']:.4f}, seuil={metr['threshold']:.3f}")
+            print(f"✅ {name:<12}: F1_VAL={metr['f1']:.4f}, seuil={metr['threshold']:.3f}")
         except Exception as e:
             print(f"❌ {name:<12}: Erreur → {e}")
 
@@ -99,7 +99,7 @@ def optimize_multiple(pipes: dict, X_val, y_val, *, plot_each=False, show_df=Tru
         except NameError:
             print(df)
 
-        print(f"\n🏆 Meilleur seuil : {df.iloc[0]['model']} (F1={df.iloc[0]['f1']:.4f})")
+        print(f"\n🏆 Meilleur seuil (VALIDATION) : {df.iloc[0]['model']} (F1={df.iloc[0]['f1']:.4f})")
 
     return df
 
