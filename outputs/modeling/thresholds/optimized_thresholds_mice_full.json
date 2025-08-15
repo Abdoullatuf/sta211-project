@@ -1,29 +1,29 @@
 {
-  "gradboost": {
+  "GradBoost": {
     "threshold": 0.4914,
     "f1": 0.9313,
     "precision": 0.9839,
     "recall": 0.8841
   },
-  "xgboost": {
+  "XGBoost": {
     "threshold": 0.7193,
     "f1": 0.9242,
     "precision": 0.9683,
     "recall": 0.8841
   },
-  "randforest": {
+  "RandForest": {
     "threshold": 0.4808,
     "f1": 0.9091,
     "precision": 0.9524,
     "recall": 0.8696
   },
-  "mlp": {
+  "MLP": {
     "threshold": 0.9347,
     "f1": 0.9023,
     "precision": 0.9375,
     "recall": 0.8696
   },
-  "svm": {
+  "SVM": {
     "threshold": 0.0625,
     "f1": 0.9,
     "precision": 0.8873,
