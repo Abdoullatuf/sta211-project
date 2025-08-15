@@ -146,7 +146,18 @@ def load_optimized_thresholds(imputation: str, version: str, input_dir: Path) ->
 
 
 def optimize_all_thresholds(pipelines_dict, splits_dict, output_dir):
-    """Optimise et sauvegarde les seuils pour toutes les combinaisons KNN/MICE × Full/Reduced."""
+    """
+    Optimise et sauvegarde les seuils pour toutes les combinaisons KNN/MICE × Full/Reduced.
+    
+    Args:
+        pipelines_dict: Dict des pipelines {key: {model_name: pipeline}}
+        splits_dict: Dict des splits avec structure uniforme {key: {"X_val": df, "y_val": series}}
+        output_dir: Répertoire de sauvegarde
+    
+    Note: 
+        Supporte maintenant la structure uniforme 6-splits pour tous les types de données.
+        Plus besoin de distinction entre structure "full" et "reduced".
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     combinations = [
         ("knn", "full"),
@@ -160,8 +171,18 @@ def optimize_all_thresholds(pipelines_dict, splits_dict, output_dir):
         print(f"--- {imput.upper()} {version.upper()} ---")
 
         pipes = pipelines_dict.get(key)
-        val_X = splits_dict[key]["X_val"] if version == "full" else splits_dict[key]["val"]["X"]
-        val_y = splits_dict[key]["y_val"] if version == "full" else splits_dict[key]["val"]["y"]
+        if pipes is None:
+            print(f"⚠️ Aucun pipeline trouvé pour {key}")
+            continue
+            
+        # ✅ STRUCTURE UNIFORME: Tous les splits utilisent maintenant X_val/y_val
+        splits = splits_dict.get(key)
+        if splits is None:
+            print(f"⚠️ Aucun split trouvé pour {key}")
+            continue
+            
+        val_X = splits["X_val"]
+        val_y = splits["y_val"]
 
         thresholds = optimize_multiple(
             pipes, val_X, val_y, plot_each=False
