@@ -2,8 +2,6 @@
 Module consolidé de modélisation et analyse - STA211 Project
 Consolidation de: modeling.py, stacking.py, stacking_threshold_optimizer.py
 
-Auteur: Maoulida Abdoullatuf
-Version: 4.0 (consolidée)
 """
 
 import joblib
@@ -1614,6 +1612,6 @@ def optimize_stacking_thresholds(X_train_knn, X_val_knn, y_train_knn, y_val_knn,
             continue
     
     if verbose:
-        print(f"\n🏆 Optimisation terminée pour {len(results)} configurations")
+        print(f"\n Optimisation terminée pour {len(results)} configurations")
     
     return results
