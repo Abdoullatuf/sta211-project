@@ -1,30 +1,30 @@
 {
-  "xgboost": {
-    "threshold": 0.9263,
-    "f1": 0.9302,
+  "XGBoost": {
+    "threshold": 0.937,
+    "f1": 0.9385,
     "precision": 1.0,
-    "recall": 0.8696
+    "recall": 0.8841
   },
-  "randforest": {
-    "threshold": 0.5695,
-    "f1": 0.9231,
-    "precision": 0.9836,
-    "recall": 0.8696
+  "RandForest": {
+    "threshold": 0.5426,
+    "f1": 0.9173,
+    "precision": 0.9531,
+    "recall": 0.8841
   },
-  "gradboost": {
-    "threshold": 0.3484,
-    "f1": 0.9185,
-    "precision": 0.9394,
+  "GradBoost": {
+    "threshold": 0.384,
+    "f1": 0.9118,
+    "precision": 0.9254,
     "recall": 0.8986
   },
-  "mlp": {
-    "threshold": 0.9076,
+  "MLP": {
+    "threshold": 0.9309,
     "f1": 0.8939,
     "precision": 0.9365,
     "recall": 0.8551
   },
-  "svm": {
-    "threshold": 0.8311,
+  "SVM": {
+    "threshold": 0.8321,
     "f1": 0.8855,
     "precision": 0.9355,
     "recall": 0.8406
