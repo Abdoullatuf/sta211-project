@@ -1,0 +1,7 @@
+{
+  "GradBoost": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_gradboost_knn_full.pkl",
+  "RandForest": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_randforest_knn_full.pkl",
+  "SVM": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_svm_knn_full.pkl",
+  "MLP": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_mlp_knn_full.pkl",
+  "XGBoost": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_xgboost_knn_full.pkl"
+}

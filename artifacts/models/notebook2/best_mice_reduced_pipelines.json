@@ -1,0 +1,7 @@
+{
+  "GradBoost": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_gradboost_mice_reduced.pkl",
+  "RandForest": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_randforest_mice_reduced.pkl",
+  "SVM": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_svm_mice_reduced.pkl",
+  "MLP": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_mlp_mice_reduced.pkl",
+  "XGBoost": "C:\\sta211-project\\artifacts\\models\\notebook2\\pipeline_xgboost_mice_reduced.pkl"
+}
