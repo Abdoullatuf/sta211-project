@@ -8,11 +8,11 @@ import json
 import csv
 from pathlib import Path
 
-def create_submission_820(method="stacking_with_refit_mice", output_name=None):
+def create_submission(method="stacking_with_refit_mice", output_name=None):
     """Créer un fichier de soumission avec 820 prédictions."""
     
-    # Chemins
-    project_root = Path(__file__).parent
+    # Chemins - CORRECTION : remonter d'un niveau depuis modules/ vers la racine
+    project_root = Path(__file__).parent.parent  # Remonter d'un niveau
     stacking_results_path = project_root / "artifacts" / "models" / "notebook3" / "stacking" / f"{method}.json"
     output_dir = project_root / "outputs" / "predictions"
     
@@ -99,11 +99,11 @@ if __name__ == "__main__":
     try:
         # MICE
         print("\n=== STACKING MICE ===")
-        submission_mice = create_submission_820("stacking_with_refit_mice")
+        submission_mice = create_submission("stacking_with_refit_mice")
         
         # KNN
         print("\n=== STACKING KNN ===")
-        submission_knn = create_submission_820("stacking_with_refit_knn")
+        submission_knn = create_submission("stacking_with_refit_knn")
         
         print("\n✅ Tous les fichiers de soumission ont été générés avec succès !")
         
