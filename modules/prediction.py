@@ -194,12 +194,24 @@ class PredictionPipeline:
                     lower, upper = capping_params[col]
                     # S'assurer que les valeurs de capping sont numériques
                     try:
+                        # Ignorer les valeurs textuelles comme 'lower_bound', 'upper_bound'
+                        if isinstance(lower, str) and not lower.replace('.', '').replace('-', '').isdigit():
+                            lower = None
+                        if isinstance(upper, str) and not upper.replace('.', '').replace('-', '').isdigit():
+                            upper = None
+                            
                         lower = float(lower) if lower is not None else None
                         upper = float(upper) if upper is not None else None
-                        # Vérifier que la colonne est bien numérique
-                        if not pd.api.types.is_numeric_dtype(df[col]):
-                            df[col] = pd.to_numeric(df[col], errors='coerce')
-                        df[col] = df[col].clip(lower=lower, upper=upper)
+                        
+                        # Appliquer seulement si on a au moins une valeur valide
+                        if lower is not None or upper is not None:
+                            # Vérifier que la colonne est bien numérique
+                            if not pd.api.types.is_numeric_dtype(df[col]):
+                                df[col] = pd.to_numeric(df[col], errors='coerce')
+                            df[col] = df[col].clip(lower=lower, upper=upper)
+                            logger.info(f"Capping appliqué sur {col}: [{lower}, {upper}]")
+                        else:
+                            logger.warning(f"Pas de valeurs de capping valides pour {col}, ignoré")
                     except (ValueError, TypeError) as e:
                         logger.warning(f"Erreur lors du capping de {col}: {e}, ignoré")
                         continue
@@ -483,6 +495,10 @@ class PredictionPipeline:
             DataFrame de soumission générée par le meilleur stacking.
         """
         stacking_dir = Path(stacking_dir)
+        logger.info(f"Recherche du dossier de stacking : {stacking_dir}")
+        logger.info(f"Dossier existe : {stacking_dir.exists()}")
+        logger.info(f"Est un dossier : {stacking_dir.is_dir() if stacking_dir.exists() else 'N/A'}")
+        
         if not stacking_dir.exists() or not stacking_dir.is_dir():
             logger.error(f"Dossier de stacking introuvable : {stacking_dir}")
             logger.warning("Retour au stacking par défaut…")
@@ -491,8 +507,14 @@ class PredictionPipeline:
         best_f1 = -1
         best_threshold = None
         best_suffix = None
-        # Parcourir les fichiers JSON
-        for json_file in stacking_dir.glob("stacking_no_refit_*_full.json"):
+        # Lister tous les fichiers JSON
+        json_files = list(stacking_dir.glob("*.json"))
+        logger.info(f"Fichiers JSON trouvés : {[f.name for f in json_files]}")
+        
+        # Parcourir tous les fichiers JSON de stacking
+        for json_file in json_files:
+            if "stacking" not in json_file.name.lower():
+                continue
             try:
                 with open(json_file, 'r') as f:
                     data = json.load(f)
@@ -617,6 +639,58 @@ class PredictionPipeline:
         submission.to_csv(output_path, index=False)
         
         logger.info(f"\nFichier sauvegardé : {output_path}")
+        return submission
+
+    def create_submission_from_stacking_results(self, stacking_data: dict, threshold: float) -> pd.DataFrame:
+        """
+        Crée une soumission directement à partir des résultats de stacking sauvegardés.
+        
+        Args:
+            stacking_data: Données JSON du stacking (avec prédictions)
+            threshold: Seuil optimal à appliquer
+            
+        Returns:
+            DataFrame de soumission
+        """
+        logger.info("Création de la soumission à partir des résultats de stacking...")
+        
+        # Extraire les probabilités de test
+        predictions_data = stacking_data.get('predictions', {})
+        test_proba = predictions_data.get('test_proba', [])
+        
+        if not test_proba:
+            logger.error("Aucune probabilité de test trouvée dans les données de stacking")
+            return self.generate_predictions_with_stacking()
+        
+        # Appliquer le seuil
+        predictions = (np.array(test_proba) >= threshold).astype(int)
+        
+        # Créer les IDs (supposer que c'est dans l'ordre des données de test)
+        num_predictions = len(predictions)
+        ids = list(range(num_predictions))
+        
+        # Créer la soumission
+        submission = pd.DataFrame({
+            'id': ids,
+            'outcome': predictions
+        })
+        submission['outcome'] = submission['outcome'].map({0: 'noad.', 1: 'ad.'})
+        
+        # Sauvegarder
+        output_path = self.outputs_dir / "predictions" / "submission_stacking_auto.csv"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        submission.to_csv(output_path, index=False)
+        
+        # Statistiques
+        logger.info("RÉSULTATS FINAUX STACKING")
+        logger.info("-" * 40)
+        logger.info(f"Méthode : {stacking_data.get('method', 'Stacking')}")
+        logger.info(f"Seuil : {threshold:.4f}")
+        logger.info(f"Total prédictions : {len(submission)}")
+        logger.info(f"Publicités (ad.) : {np.sum(submission['outcome'] == 'ad.')} ({np.mean(submission['outcome'] == 'ad.')*100:.1f}%)")
+        logger.info(f"Non-publicités (noad.) : {np.sum(submission['outcome'] == 'noad.')} ({np.mean(submission['outcome'] == 'noad.')*100:.1f}%)")
+        logger.info(f"Fichier sauvegardé : {output_path}")
+        
         return submission
 
 # Fonction principale
