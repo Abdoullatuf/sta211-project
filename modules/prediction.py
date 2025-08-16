@@ -736,6 +736,11 @@ def generate_final_predictions(
                     if not default_dir.exists():
                         default_dir = pipeline.models_dir / "notebook3" / "stacking"
                 stacking_dir = default_dir
+            else:
+                # Si stacking_dir est fourni comme chemin relatif, le résoudre depuis base_dir
+                stacking_dir = Path(stacking_dir)
+                if not stacking_dir.is_absolute():
+                    stacking_dir = pipeline.base_dir / stacking_dir
             return pipeline.generate_predictions_with_stacking_auto(stacking_dir)
         else:
             # Sélection automatique du meilleur modèle individuel
