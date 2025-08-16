@@ -727,7 +727,10 @@ def load_pipeline(model_name, imputation_method, version, models_dir=None):
         raise ValueError("models_dir doit être fourni")
     
     filename = f"pipeline_{model_name}_{imputation_method}_{version}.joblib"
-    filepath = Path(models_dir) / filename
+    # Fix: Force le chemin passé en paramètre
+    filepath = Path(str(models_dir)) / filename
+    
+    print(f"Debug: Tentative de chargement {filepath}")  # Debug temporaire
     
     if filepath.exists():
         return joblib.load(filepath)
