@@ -2,6 +2,8 @@
 Module consolidé de modélisation et analyse - STA211 Project
 Consolidation de: modeling.py, stacking.py, stacking_threshold_optimizer.py
 
+Auteur: Maoulida Abdoullatuf
+Version: 4.0 (consolidée)
 """
 
 import joblib
@@ -83,7 +85,7 @@ def optimize_multiple(pipes: dict, X_val, y_val, *, plot_each=False, show_df=Tru
             metr = optimize_threshold(pipe, X_val, y_val, plot=plot_each, label=name)
             metr["model"] = name
             rows.append(metr)
-            print(f"✅ {name:<12}: F1_VAL={metr['f1']:.4f}, seuil={metr['threshold']:.3f}")
+            print(f"✅ {name:<12}: F1={metr['f1']:.4f}, seuil={metr['threshold']:.3f}")
         except Exception as e:
             print(f"❌ {name:<12}: Erreur → {e}")
 
@@ -99,7 +101,7 @@ def optimize_multiple(pipes: dict, X_val, y_val, *, plot_each=False, show_df=Tru
         except NameError:
             print(df)
 
-        print(f"\n🏆 Meilleur seuil (VALIDATION) : {df.iloc[0]['model']} (F1={df.iloc[0]['f1']:.4f})")
+        print(f"\n🏆 Meilleur seuil : {df.iloc[0]['model']} (F1={df.iloc[0]['f1']:.4f})")
 
     return df
 
@@ -146,18 +148,7 @@ def load_optimized_thresholds(imputation: str, version: str, input_dir: Path) ->
 
 
 def optimize_all_thresholds(pipelines_dict, splits_dict, output_dir):
-    """
-    Optimise et sauvegarde les seuils pour toutes les combinaisons KNN/MICE × Full/Reduced.
-    
-    Args:
-        pipelines_dict: Dict des pipelines {key: {model_name: pipeline}}
-        splits_dict: Dict des splits avec structure uniforme {key: {"X_val": df, "y_val": series}}
-        output_dir: Répertoire de sauvegarde
-    
-    Note: 
-        Supporte maintenant la structure uniforme 6-splits pour tous les types de données.
-        Plus besoin de distinction entre structure "full" et "reduced".
-    """
+    """Optimise et sauvegarde les seuils pour toutes les combinaisons KNN/MICE × Full/Reduced."""
     output_dir.mkdir(parents=True, exist_ok=True)
     combinations = [
         ("knn", "full"),
@@ -171,18 +162,8 @@ def optimize_all_thresholds(pipelines_dict, splits_dict, output_dir):
         print(f"--- {imput.upper()} {version.upper()} ---")
 
         pipes = pipelines_dict.get(key)
-        if pipes is None:
-            print(f"⚠️ Aucun pipeline trouvé pour {key}")
-            continue
-            
-        # ✅ STRUCTURE UNIFORME: Tous les splits utilisent maintenant X_val/y_val
-        splits = splits_dict.get(key)
-        if splits is None:
-            print(f"⚠️ Aucun split trouvé pour {key}")
-            continue
-            
-        val_X = splits["X_val"]
-        val_y = splits["y_val"]
+        val_X = splits_dict[key]["X_val"] if version == "full" else splits_dict[key]["val"]["X"]
+        val_y = splits_dict[key]["y_val"] if version == "full" else splits_dict[key]["val"]["y"]
 
         thresholds = optimize_multiple(
             pipes, val_X, val_y, plot_each=False
@@ -721,48 +702,88 @@ def generate_mean_proba(pipelines, X):
     return np.mean(probas, axis=0)
 
 
-def load_pipeline(model_name, imputation_method, version, models_dir=None):
-    """Charge un pipeline depuis un fichier."""
+def load_pipeline(model_name: str, imputation_method: str, version: str, models_dir: Optional[Union[str, Path]] = None):
+    """
+    Charge un pipeline depuis un fichier.
+
+    Cette fonction recherche d'abord un fichier `.joblib` puis un fichier `.pkl`
+    correspondant au nom de base `pipeline_<model_name>_<imputation_method>_<version>`.
+    Cela permet de charger les pipelines quel que soit le format utilisé pour
+    la sérialisation (joblib ou pickle).
+
+    Args:
+        model_name: Nom du modèle (ex: 'randforest', 'xgboost').
+        imputation_method: Méthode d'imputation (ex: 'knn', 'mice').
+        version: Variante du pipeline (ex: 'full', 'reduced').
+        models_dir: Répertoire de base où se trouvent les fichiers des pipelines.
+
+    Returns:
+        Le pipeline chargé ou None si aucun fichier n'est trouvé.
+    """
     if models_dir is None:
         raise ValueError("models_dir doit être fourni")
-    
-    filename = f"pipeline_{model_name}_{imputation_method}_{version}.joblib"
-    # Fix: Force le chemin passé en paramètre
-    filepath = Path(str(models_dir)) / filename
-    
-    print(f"Debug: Tentative de chargement {filepath}")  # Debug temporaire
-    
-    if filepath.exists():
-        return joblib.load(filepath)
-    else:
-        print(f"Fichier non trouvé : {filepath}")
-        return None
+
+    base_name = f"pipeline_{model_name}_{imputation_method}_{version}"
+    # Essayer d'abord .joblib puis .pkl
+    for ext in [".joblib", ".pkl"]:
+        filepath = Path(models_dir) / f"{base_name}{ext}"
+        if filepath.exists():
+            try:
+                return joblib.load(filepath)
+            except Exception as e:
+                print(f"❌ Erreur lors du chargement de {filepath}: {e}")
+                return None
+    # Aucun fichier trouvé
+    print(f"Fichier non trouvé : {Path(models_dir) / (base_name + '.joblib')}")
+    return None
 
 
-def load_best_pipelines(imputation_method, version="", models_dir=None, model_dir=None):
-    """Charge tous les meilleurs pipelines pour une méthode d'imputation donnée."""
+def load_best_pipelines(imputation_method: str,
+                        version: str = "",
+                        models_dir: Optional[Union[str, Path]] = None,
+                        model_dir: Optional[Union[str, Path]] = None) -> Dict[str, object]:
+    """
+    Charge tous les meilleurs pipelines pour une méthode d'imputation donnée.
+
+    Cette fonction tente de trouver des fichiers de pipelines en testant plusieurs
+    motifs de noms et extensions (.joblib et .pkl). Elle est compatible avec
+    l'ancien paramètre `model_dir` pour rétrocompatibilité.
+
+    Args:
+        imputation_method: Méthode d'imputation (ex: 'knn', 'mice').
+        version: Variante du pipeline ('full', 'reduced', etc.). Peut être vide.
+        models_dir: Répertoire où se trouvent les pipelines. S'il est None,
+            utilise 'models/'.
+        model_dir: Alias pour `models_dir` (rétrocompatibilité).
+
+    Returns:
+        Un dictionnaire {model_name: pipeline} pour les modèles trouvés.
+    """
     # Compatibilité avec les deux noms de paramètres
     if model_dir is not None:
         models_dir = model_dir
-    
+
     if models_dir is None:
         models_dir = Path("models")
     else:
         models_dir = Path(models_dir)
-    
+
     version_suffix = f"_{version}" if version else ""
-    
+
     models_to_load = ["gradboost", "mlp", "randforest", "svm", "xgboost"]
     pipelines = {}
-    
+
     for model_name in models_to_load:
-        # Essayer différents patterns de noms de fichiers
+        # Essayer différents patterns de noms de fichiers avec deux extensions
         patterns = [
             f"pipeline_{model_name}_{imputation_method}{version_suffix}.joblib",
+            f"pipeline_{model_name}_{imputation_method}{version_suffix}.pkl",
             f"best_{model_name}_{imputation_method}{version_suffix}.joblib",
-            f"{model_name}_{imputation_method}{version_suffix}.joblib"
+            f"best_{model_name}_{imputation_method}{version_suffix}.pkl",
+            f"{model_name}_{imputation_method}{version_suffix}.joblib",
+            f"{model_name}_{imputation_method}{version_suffix}.pkl"
         ]
-        
+
         loaded = False
         for pattern in patterns:
             filepath = models_dir / pattern
@@ -774,10 +795,9 @@ def load_best_pipelines(imputation_method, version="", models_dir=None, model_di
                     break
                 except Exception as e:
                     print(f"❌ Erreur lors du chargement de {filepath}: {e}")
-        
         if not loaded:
             print(f"⚠️ Pipeline {model_name}_{imputation_method} non trouvé")
-    
+
     return pipelines
 
 
@@ -1636,6 +1656,6 @@ def optimize_stacking_thresholds(X_train_knn, X_val_knn, y_train_knn, y_val_knn,
             continue
     
     if verbose:
-        print(f"\n Optimisation terminée pour {len(results)} configurations")
+        print(f"\n🏆 Optimisation terminée pour {len(results)} configurations")
     
     return results
