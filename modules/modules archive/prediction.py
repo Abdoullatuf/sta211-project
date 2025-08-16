@@ -1,218 +1,21 @@
+# modules/prediction.py
 """
-Module consolidé d'utilitaires - STA211 Project
-Consolidation de: build_comparison_table.py, visualization.py, prediction.py
-
-Auteur: Maoulida Abdoullatuf
-Version: 4.0 (consolidée)
+Module unifié pour la génération des prédictions finales
+Projet STA211 - Classification de publicités
+Version avec vrais modèles uniquement
 """
 
 import pandas as pd
 import numpy as np
-import json
 import joblib
+import json
 import logging
-import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
-from sklearn.feature_selection import RFECV
-from sklearn.inspection import permutation_importance
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from typing import Tuple, Optional, Union
 
 # Configuration du logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# =============================================================================
-# 1. CONSTRUCTION DE TABLES DE COMPARAISON (ex-build_comparison_table.py)
-# =============================================================================
-
-def build_comparison_table(json_results_paths: List[Union[str, Path]], model_details: Dict) -> pd.DataFrame:
-    """
-    Construit un DataFrame comparatif à partir de fichiers JSON de résultats.
-
-    Args:
-        json_results_paths (list): Liste de chemins vers les fichiers JSON de résultats.
-        model_details (dict): Dictionnaire {nom_fichier_json: {details_du_modèle}}.
-
-    Returns:
-        pd.DataFrame: DataFrame des comparaisons trié par F1-score test.
-    """
-    results = []
-    for json_path in json_results_paths:
-        json_path = Path(json_path)
-        filename = json_path.name
-        try:
-            with open(json_path, 'r') as f:
-                data = json.load(f)
-
-            base_info = model_details.get(filename, {})
-            nom_affiche = base_info.get("Nom Affiché", filename.replace(".json", ""))
-            type_model = base_info.get("Type", "Inconnu")
-            imputation = base_info.get("Imputation", "Inconnue")
-
-            perf = data.get("performance", {})
-            # Priorité au F1-score sur test, sinon sur val
-            f1_test = perf.get("f1_score_test")
-            f1_val = perf.get("f1_score_val")
-            f1_to_use = f1_test if f1_test is not None else f1_val
-
-            precision_test = perf.get("precision_test")
-            recall_test = perf.get("recall_test")
-            
-            # Si F1-test n'est pas dispo, on peut utiliser F1-val ou le définir à None
-            precision_to_use = precision_test if f1_test is not None else perf.get("precision_val")
-            recall_to_use = recall_test if f1_test is not None else perf.get("recall_val")
-
-            threshold = data.get("threshold")
-
-            if f1_to_use is not None:
-                results.append({
-                    'Modèle': nom_affiche,
-                    'Type': type_model,
-                    'Imputation': imputation,
-                    'F1-score (test)': f1_to_use,
-                    'Précision (test)': precision_to_use,
-                    'Rappel (test)': recall_to_use,
-                    'Seuil utilisé': threshold
-                })
-            else:
-                print(f"⚠️ Score F1 manquant dans {json_path}")
-
-        except FileNotFoundError:
-            print(f"❌ Fichier non trouvé : {json_path}")
-        except json.JSONDecodeError:
-            print(f"❌ Erreur de décodage JSON dans {json_path}")
-        except Exception as e:
-             print(f"❌ Erreur lors du traitement de {json_path} : {e}")
-
-    if not results:
-        print("Aucun résultat valide à afficher.")
-        return pd.DataFrame()
-
-    df_results = pd.DataFrame(results)
-    df_results = df_results.sort_values(by='F1-score (test)', ascending=False).reset_index(drop=True)
-    return df_results
-
-# =============================================================================
-# 2. FONCTIONS DE VISUALISATION (ex-visualization.py) 
-# =============================================================================
-
-def plot_feature_selection_performance(cv_scores: np.ndarray, n_features_list: List[int], 
-                                      title: str = "Performance par nombre de features",
-                                      figsize: Tuple[int, int] = (10, 6)) -> None:
-    """
-    Visualise les performances de sélection de features.
-    """
-    plt.figure(figsize=figsize)
-    
-    # Calculer les statistiques
-    mean_scores = np.mean(cv_scores, axis=1)
-    std_scores = np.std(cv_scores, axis=1)
-    
-    # Plot avec barres d'erreur
-    plt.plot(n_features_list, mean_scores, 'b-', marker='o', markersize=5)
-    plt.fill_between(n_features_list, 
-                     mean_scores - std_scores, 
-                     mean_scores + std_scores, 
-                     alpha=0.2, color='blue')
-    
-    # Trouver le meilleur score
-    best_idx = np.argmax(mean_scores)
-    best_n_features = n_features_list[best_idx]
-    best_score = mean_scores[best_idx]
-    
-    plt.axvline(x=best_n_features, color='red', linestyle='--', alpha=0.7,
-                label=f'Optimal: {best_n_features} features (score={best_score:.4f})')
-    
-    plt.xlabel('Nombre de features')
-    plt.ylabel('Score de validation croisée')
-    plt.title(title)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
-
-def plot_feature_importance_comparison(importance_data: Dict[str, Dict], 
-                                     top_n: int = 15,
-                                     figsize: Tuple[int, int] = (12, 8)) -> None:
-    """
-    Compare l'importance des features entre différentes méthodes.
-    
-    Args:
-        importance_data: Dict avec {methode: {feature: importance}}
-        top_n: Nombre de top features à afficher
-        figsize: Taille de la figure
-    """
-    if not importance_data:
-        print("Aucune donnée d'importance fournie")
-        return
-    
-    # Créer un DataFrame pour faciliter la visualisation
-    all_features = set()
-    for method_data in importance_data.values():
-        all_features.update(method_data.keys())
-    
-    df_importance = pd.DataFrame(index=sorted(all_features))
-    
-    for method, features_imp in importance_data.items():
-        df_importance[method] = pd.Series(features_imp)
-    
-    # Remplir les NaN avec 0
-    df_importance = df_importance.fillna(0)
-    
-    # Calculer l'importance moyenne et prendre le top_n
-    df_importance['mean_importance'] = df_importance.mean(axis=1)
-    top_features = df_importance.nlargest(top_n, 'mean_importance')
-    
-    # Supprimer la colonne moyenne pour le plot
-    top_features = top_features.drop('mean_importance', axis=1)
-    
-    # Créer le graphique
-    fig, ax = plt.subplots(figsize=figsize)
-    top_features.plot(kind='bar', ax=ax, width=0.8)
-    
-    plt.title(f'Comparaison de l\'importance des features (Top {top_n})')
-    plt.xlabel('Features')
-    plt.ylabel('Importance')
-    plt.xticks(rotation=45, ha='right')
-    plt.legend(title='Méthode', bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
-
-def plot_model_performance_comparison(results_df: pd.DataFrame, 
-                                    metric_col: str = 'F1-score (test)',
-                                    figsize: Tuple[int, int] = (12, 8)) -> None:
-    """
-    Visualise la comparaison des performances entre modèles.
-    """
-    if results_df.empty:
-        print("DataFrame vide - aucune donnée à visualiser")
-        return
-    
-    plt.figure(figsize=figsize)
-    
-    # Créer le graphique en barres
-    bars = plt.bar(range(len(results_df)), results_df[metric_col], 
-                   color=['green' if i == 0 else 'lightblue' for i in range(len(results_df))])
-    
-    # Ajouter les valeurs sur les barres
-    for i, (bar, value) in enumerate(zip(bars, results_df[metric_col])):
-        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.001,
-                f'{value:.4f}', ha='center', va='bottom', fontweight='bold' if i == 0 else 'normal')
-    
-    plt.xlabel('Modèles')
-    plt.ylabel(metric_col)
-    plt.title(f'Comparaison des modèles - {metric_col}')
-    plt.xticks(range(len(results_df)), results_df['Modèle'], rotation=45, ha='right')
-    plt.grid(True, alpha=0.3, axis='y')
-    plt.tight_layout()
-    plt.show()
-
-# =============================================================================
-# 3. PIPELINE DE PRÉDICTIONS (ex-prediction.py)
-# =============================================================================
 
 class PredictionPipeline:
     """Pipeline complet pour générer les prédictions finales avec les vrais modèles"""
@@ -228,7 +31,7 @@ class PredictionPipeline:
         
         logger.info(f"Pipeline initialisé avec base_dir: {self.base_dir}")
     
-    def load_and_preprocess_test_data(self) -> Tuple[pd.DataFrame, pd.Series]:
+    def load_and_preprocess_test_data(self):
         """
         Charge et prétraite les données de test exactement comme dans les notebooks.
         """
@@ -313,7 +116,7 @@ class PredictionPipeline:
         
         return features, ids
     
-    def apply_notebook1_preprocessing(self, features: pd.DataFrame, imputation_method: str = "knn") -> pd.DataFrame:
+    def apply_notebook1_preprocessing(self, features: pd.DataFrame, imputation_method: str = "knn"):
         """
         Applique le prétraitement exact du notebook 1.
         """
@@ -389,17 +192,7 @@ class PredictionPipeline:
             for col in ['X1_transformed', 'X2_transformed', 'X3_transformed']:
                 if col in capping_params and col in df.columns:
                     lower, upper = capping_params[col]
-                    # S'assurer que les valeurs de capping sont numériques
-                    try:
-                        lower = float(lower) if lower is not None else None
-                        upper = float(upper) if upper is not None else None
-                        # Vérifier que la colonne est bien numérique
-                        if not pd.api.types.is_numeric_dtype(df[col]):
-                            df[col] = pd.to_numeric(df[col], errors='coerce')
-                        df[col] = df[col].clip(lower=lower, upper=upper)
-                    except (ValueError, TypeError) as e:
-                        logger.warning(f"Erreur lors du capping de {col}: {e}, ignoré")
-                        continue
+                    df[col] = df[col].clip(lower=lower, upper=upper)
             logger.info("Capping des outliers appliqué")
         
         # 5. Features polynomiales
@@ -427,7 +220,7 @@ class PredictionPipeline:
         
         return df
     
-    def generate_predictions_with_best_model(self) -> pd.DataFrame:
+    def generate_predictions_with_best_model(self):
         """
         Génère les prédictions avec le meilleur modèle (GradBoost KNN Reduced).
         """
@@ -507,7 +300,7 @@ class PredictionPipeline:
         
         return submission
     
-    def generate_predictions_with_stacking(self) -> pd.DataFrame:
+    def generate_predictions_with_stacking(self):
         """
         Génère les prédictions avec le modèle de stacking.
         """
@@ -557,95 +350,22 @@ class PredictionPipeline:
         logger.info(f"\nFichier sauvegardé : {output_path}")
         return submission
 
-# =============================================================================
-# 4. FONCTIONS UTILITAIRES GÉNÉRALES
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Wrapper de prédictions finales
-# -----------------------------------------------------------------------------
-# Nous réutilisons la fonction définie dans modules.prediction afin de ne pas
-# dupliquer la logique. Cette fonction accepte également les arguments
-# ``auto_select`` et ``results_csv_path`` pour sélectionner automatiquement le
-# meilleur modèle ou stacking.
-# Importer la fonction de prédiction finale depuis le module prediction. Comme les
-# modules ne sont pas emballés dans un package Python, on utilise une importation
-# absolue.
-from prediction import generate_final_predictions as _generate_final_predictions
-
-def generate_final_predictions(*args, **kwargs) -> pd.DataFrame:
+# Fonction principale
+def generate_final_predictions(use_stacking: bool = False):
     """
-    Génère les prédictions finales en réutilisant la fonction de
-    ``modules.prediction.generate_final_predictions``. Tous les arguments
-    positionnels ou mots-clés sont passés tels quels à cette fonction.
-
-    Exemple :
-        >>> from modules.utils import generate_final_predictions
-        >>> submission = generate_final_predictions(use_stacking=False, auto_select=True,
-                                                   results_csv_path="outputs/modeling/test_results_all_models.csv")
-
-    Voir ``modules.prediction.generate_final_predictions`` pour plus de détails
-    sur les paramètres disponibles.
-    """
-    return _generate_final_predictions(*args, **kwargs)
-
-def calculate_model_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_proba: Optional[np.ndarray] = None) -> Dict[str, float]:
-    """
-    Calcule les métriques de performance d'un modèle.
+    Génère les prédictions finales avec les vrais modèles.
     
     Args:
-        y_true: Vraies étiquettes
-        y_pred: Prédictions binaires
-        y_proba: Probabilités prédites (optionnel)
-    
-    Returns:
-        Dictionnaire des métriques
+        use_stacking: Si True, utilise le stacking. Sinon, utilise le modèle champion.
     """
-    metrics = {
-        'accuracy': accuracy_score(y_true, y_pred),
-        'precision': precision_score(y_true, y_pred, zero_division=0),
-        'recall': recall_score(y_true, y_pred, zero_division=0),
-        'f1_score': f1_score(y_true, y_pred, zero_division=0)
-    }
+    pipeline = PredictionPipeline()
     
-    if y_proba is not None:
-        from sklearn.metrics import roc_auc_score
-        try:
-            metrics['roc_auc'] = roc_auc_score(y_true, y_proba)
-        except ValueError:
-            # En cas d'une seule classe dans y_true
-            metrics['roc_auc'] = np.nan
-    
-    return metrics
+    if use_stacking:
+        return pipeline.generate_predictions_with_stacking()
+    else:
+        return pipeline.generate_predictions_with_best_model()
 
-def save_results_to_json(results: Dict, output_path: Union[str, Path]) -> None:
-    """
-    Sauvegarde les résultats dans un fichier JSON.
-    
-    Args:
-        results: Dictionnaire des résultats
-        output_path: Chemin de sauvegarde
-    """
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Convertir les types numpy en types Python pour la sérialisation JSON
-    def convert_numpy_types(obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, dict):
-            return {key: convert_numpy_types(value) for key, value in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_numpy_types(item) for item in obj]
-        return obj
-    
-    results_serializable = convert_numpy_types(results)
-    
-    with open(output_path, 'w') as f:
-        json.dump(results_serializable, f, indent=2)
-    
-    logger.info(f"Résultats sauvegardés dans : {output_path}")
+if __name__ == "__main__":
+    # Générer avec le modèle champion
+    submission = generate_final_predictions(use_stacking=False)
+    print("\n✅ Prédictions générées avec le modèle champion !")

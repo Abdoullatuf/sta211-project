@@ -299,6 +299,265 @@ class PredictionPipeline:
         logger.info(f"\nFichier sauvegardé : {output_path}")
         
         return submission
+
+    # ------------------------------------------------------------------
+    # Nouveau : génération automatique en fonction des performances
+    # ------------------------------------------------------------------
+    def generate_predictions_with_selected_model(self, model_name: str, imputation: str, version: str, threshold: float) -> pd.DataFrame:
+        """
+        Génère les prédictions finales à partir d'un modèle spécifique, d'une méthode
+        d'imputation et d'une variante (full/reduced), en appliquant le seuil
+        optimal fourni.
+
+        Args:
+            model_name: nom du modèle (ex: 'randforest', 'xgboost', 'gradboost').
+            imputation: méthode d'imputation utilisée ('knn' ou 'mice').
+            version: version du modèle ('full' ou 'reduced').
+            threshold: seuil de classification optimisé à appliquer.
+
+        Returns:
+            DataFrame de soumission avec les colonnes 'id' et 'outcome'.
+        """
+        logger.info("=" * 80)
+        logger.info(f"GÉNÉRATION DES PRÉDICTIONS AVEC {model_name.upper()} {imputation.upper()} {version.upper()}")
+        logger.info("=" * 80)
+
+        # 1. Charger et prétraiter les données de test
+        features, ids = self.load_and_preprocess_test_data()
+        X_processed = self.apply_notebook1_preprocessing(features, imputation_method=imputation)
+
+        # 2. Déterminer le chemin du modèle
+        # Plusieurs conventions possibles : best_*, pipeline_*, extensions .joblib ou .pkl
+        candidates = []
+        # Sans sous-dossier imputation/version (modèles au niveau racine)
+        candidates.append(self.models_dir / f"pipeline_{model_name}_{imputation}_{version}.joblib")
+        candidates.append(self.models_dir / f"pipeline_{model_name}_{imputation}_{version}.pkl")
+        candidates.append(self.models_dir / f"best_{model_name}_{imputation}_{version}.joblib")
+        candidates.append(self.models_dir / f"best_{model_name}_{imputation}_{version}.pkl")
+        # Éventuellement sous un sous-dossier par imputation/version
+        candidates.append(self.models_dir / imputation / version / f"pipeline_{model_name}_{imputation}_{version}.joblib")
+        candidates.append(self.models_dir / imputation / version / f"pipeline_{model_name}_{imputation}_{version}.pkl")
+        candidates.append(self.models_dir / imputation / version / f"best_{model_name}_{imputation}_{version}.joblib")
+        candidates.append(self.models_dir / imputation / version / f"best_{model_name}_{imputation}_{version}.pkl")
+
+        model_path = None
+        for path in candidates:
+            if path.exists():
+                model_path = path
+                break
+
+        if model_path is None:
+            raise FileNotFoundError(f"Aucun fichier de modèle trouvé parmi : {[str(p) for p in candidates]}")
+
+        model = joblib.load(model_path)
+        logger.info(f"Modèle chargé depuis : {model_path}")
+
+        # 3. Sélectionner les colonnes si version réduite
+        X_final = X_processed
+        if version.lower() == 'reduced':
+            # Chercher le fichier de colonnes sélectionnées dans plusieurs emplacements
+            sel_candidates = []
+            sel_candidates.append(self.models_dir / imputation / version / f"selected_columns_{imputation}.pkl")
+            sel_candidates.append(self.models_dir / imputation / version / "selected_features.pkl")
+            sel_candidates.append(self.models_dir / imputation / version / "selected_columns_knn.pkl")
+            sel_candidates.append(self.models_dir / imputation / version / "selected_columns_mice.pkl")
+            # Éventuels chemins dans outputs/modeling/notebook2 (cas historique)
+            sel_candidates.append(self.outputs_dir / "modeling" / "notebook2" / imputation / version / "selected_columns.pkl")
+
+            selected_columns = None
+            for s in sel_candidates:
+                if s.exists():
+                    try:
+                        selected_columns = joblib.load(s)
+                        break
+                    except Exception:
+                        continue
+            if selected_columns is not None:
+                selected_columns = [col for col in selected_columns if col in X_processed.columns]
+                if selected_columns:
+                    X_final = X_processed[selected_columns]
+                    logger.info(f"Features sélectionnées : {len(selected_columns)} colonnes")
+                else:
+                    logger.warning("Liste de features sélectionnées vide ou aucune colonne correspondante")
+            else:
+                logger.warning("Fichier de colonnes sélectionnées introuvable pour version réduite, utilisation de toutes les colonnes")
+
+        # 4. Générer les probabilités et les prédictions
+        logger.info("Génération des prédictions avec le modèle sélectionné…")
+        y_proba = model.predict_proba(X_final)[:, 1]
+        predictions = (y_proba >= threshold).astype(int)
+
+        # 5. Construire le DataFrame de soumission
+        submission = pd.DataFrame({
+            'id': ids,
+            'outcome': predictions
+        })
+        submission['outcome'] = submission['outcome'].map({0: 'noad.', 1: 'ad.'})
+
+        # 6. Sauvegarder la soumission
+        out_dir = self.outputs_dir / "predictions"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f"submission_{model_name}_{imputation}_{version}.csv"
+        output_path = out_dir / file_name
+        submission.to_csv(output_path, index=False)
+        logger.info(f"Fichier de soumission sauvegardé : {output_path}")
+
+        return submission
+
+    def generate_predictions_with_best_model_auto(self, results_csv_path: Union[str, Path]):
+        """
+        Génère les prédictions finales en sélectionnant automatiquement le meilleur
+        modèle individuel selon le F1-score indiqué dans un fichier CSV de
+        résultats de test.
+
+        Args:
+            results_csv_path: chemin vers le fichier CSV résumant les performances des
+                modèles individuels. Ce fichier doit contenir au minimum les colonnes
+                suivantes : 'model', 'imputation', 'version' et 'f1' (ou 'f1_score_test')
+                et 'threshold' si disponible.
+
+        Returns:
+            DataFrame de soumission générée par le meilleur modèle individuel.
+        """
+        # Charger le CSV de résultats
+        results_csv_path = Path(results_csv_path)
+        if not results_csv_path.exists():
+            logger.error(f"Fichier de résultats introuvable : {results_csv_path}")
+            logger.warning("Retour au modèle champion…")
+            return self.generate_predictions_with_best_model()
+
+        try:
+            df = pd.read_csv(results_csv_path)
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement du CSV {results_csv_path} : {e}")
+            logger.warning("Retour au modèle champion…")
+            return self.generate_predictions_with_best_model()
+
+        # Normaliser les colonnes
+        cols_lower = [c.lower() for c in df.columns]
+        mapping = {c: cols_lower[i] for i, c in enumerate(df.columns)}
+        # Rechercher le nom de la colonne F1
+        f1_col_candidates = [c for c in df.columns if c.lower() in ['f1', 'f1_score', 'f1_score_test', 'f1_score_val']]
+        if not f1_col_candidates:
+            logger.error("Aucune colonne F1 trouvée dans le CSV de résultats.")
+            logger.warning("Retour au modèle champion…")
+            return self.generate_predictions_with_best_model()
+        f1_col = f1_col_candidates[0]
+
+        # Trier par F1 décroissant et choisir la première ligne
+        df_sorted = df.sort_values(by=f1_col, ascending=False).reset_index(drop=True)
+        best_row = df_sorted.iloc[0]
+        model = str(best_row.get('model', '')).lower()
+        imputation = str(best_row.get('imputation', '')).lower()
+        version = str(best_row.get('version', '')).lower()
+        threshold = best_row.get('threshold', None)
+
+        if threshold is None or pd.isna(threshold):
+            # Default threshold if missing
+            logger.warning("Seuil non trouvé dans le CSV, utilisation de 0.5")
+            threshold = 0.5
+
+        logger.info(f"Meilleur modèle sélectionné : {model} {imputation} {version} (F1={best_row[f1_col]:.4f}, seuil={threshold})")
+        return self.generate_predictions_with_selected_model(model, imputation, version, float(threshold))
+
+    def generate_predictions_with_stacking_auto(self, stacking_dir: Union[str, Path]):
+        """
+        Génère les prédictions finales en sélectionnant automatiquement le meilleur
+        stacking (sans refit) parmi les fichiers JSON présents dans un dossier.
+
+        Args:
+            stacking_dir: chemin vers le dossier contenant les fichiers JSON de stacking.
+                Chaque fichier doit contenir les clés 'performance' et 'threshold'.
+
+        Returns:
+            DataFrame de soumission générée par le meilleur stacking.
+        """
+        stacking_dir = Path(stacking_dir)
+        if not stacking_dir.exists() or not stacking_dir.is_dir():
+            logger.error(f"Dossier de stacking introuvable : {stacking_dir}")
+            logger.warning("Retour au stacking par défaut…")
+            return self.generate_predictions_with_stacking()
+
+        best_f1 = -1
+        best_threshold = None
+        best_suffix = None
+        # Parcourir les fichiers JSON
+        for json_file in stacking_dir.glob("stacking_no_refit_*_full.json"):
+            try:
+                with open(json_file, 'r') as f:
+                    data = json.load(f)
+                perf = data.get('performance', {})
+                # Chercher F1 test ou F1 val
+                f1 = perf.get('f1_score_test') or perf.get('f1_score_val') or perf.get('f1')
+                threshold = data.get('threshold') or data.get('optimal_threshold')
+                if f1 is not None and threshold is not None and float(f1) > best_f1:
+                    best_f1 = float(f1)
+                    best_threshold = float(threshold)
+                    # suffix identifie le type : knn ou mice
+                    # Exemple de fichier : stacking_no_refit_knn_full.json
+                    name = json_file.name
+                    if 'knn' in name:
+                        best_suffix = 'knn'
+                    elif 'mice' in name:
+                        best_suffix = 'mice'
+                    else:
+                        best_suffix = None
+            except Exception:
+                continue
+
+        if best_f1 == -1 or best_suffix is None:
+            logger.error("Aucun fichier de stacking valide trouvé.")
+            logger.warning("Retour au stacking par défaut…")
+            return self.generate_predictions_with_stacking()
+
+        logger.info(f"Meilleur stacking : {best_suffix.upper()} (F1={best_f1:.4f}, seuil={best_threshold})")
+        # Générer et retourner les prédictions avec le stacking sélectionné
+        # Le stacking combine KNN et MICE ; seule la façon d'agréger (refit) change
+        # Ici, on réutilise generate_predictions_with_stacking mais on remplace le seuil
+        # On va charger les probabilités puis appliquer le seuil optimum
+
+        # 1. Charger et prétraiter les données
+        features, ids = self.load_and_preprocess_test_data()
+        X_knn = self.apply_notebook1_preprocessing(features, imputation_method="knn")
+        X_mice = self.apply_notebook1_preprocessing(features, imputation_method="mice")
+        
+        # 2. Charger les modèles de stacking (avec refit ou sans refit, on utilise ceux de notebook3)
+        # On cherche d'abord dans outputs/modeling/notebook3/stacking
+        default_dir = self.outputs_dir / "modeling" / "notebook3" / "stacking"
+        stacking_knn_path = default_dir / "stacking_knn_with_refit.joblib"
+        stacking_mice_path = default_dir / "stacking_mice_with_refit.joblib"
+        if not stacking_knn_path.exists() or not stacking_mice_path.exists():
+            # Fallback vers models_dir/notebook3/stacking
+            alt_dir = self.models_dir / "notebook3" / "stacking"
+            stacking_knn_path = alt_dir / "stacking_knn_with_refit.joblib"
+            stacking_mice_path = alt_dir / "stacking_mice_with_refit.joblib"
+        
+        if not stacking_knn_path.exists() or not stacking_mice_path.exists():
+            logger.warning("Modèles de stacking non trouvés, retour au stacking par défaut…")
+            return self.generate_predictions_with_stacking()
+        
+        stacking_knn = joblib.load(stacking_knn_path)
+        stacking_mice = joblib.load(stacking_mice_path)
+        
+        # 3. Générer les probabilités et les prédictions
+        proba_knn = stacking_knn.predict_proba(X_knn)[:, 1]
+        proba_mice = stacking_mice.predict_proba(X_mice)[:, 1]
+        proba_final = 0.5 * proba_knn + 0.5 * proba_mice
+        predictions = (proba_final >= best_threshold).astype(int)
+        
+        # 4. Construire la soumission
+        submission = pd.DataFrame({
+            'id': ids,
+            'outcome': predictions
+        })
+        submission['outcome'] = submission['outcome'].map({0: 'noad.', 1: 'ad.'})
+        
+        out_dir = self.outputs_dir / "predictions"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_path = out_dir / f"submission_stacking_{best_suffix}.csv"
+        submission.to_csv(output_path, index=False)
+        logger.info(f"Fichier de soumission sauvegardé : {output_path}")
+        return submission
     
     def generate_predictions_with_stacking(self):
         """
@@ -351,19 +610,62 @@ class PredictionPipeline:
         return submission
 
 # Fonction principale
-def generate_final_predictions(use_stacking: bool = False):
+def generate_final_predictions(
+    use_stacking: bool = False,
+    auto_select: bool = False,
+    results_csv_path: Optional[Union[str, Path]] = None,
+    stacking_dir: Optional[Union[str, Path]] = None,
+    base_dir: Optional[Union[str, Path]] = None,
+) -> pd.DataFrame:
     """
     Génère les prédictions finales avec les vrais modèles.
-    
+
     Args:
-        use_stacking: Si True, utilise le stacking. Sinon, utilise le modèle champion.
+        use_stacking: Si True, utilise le stacking. Sinon, utilise un modèle individuel.
+        auto_select: Si True, sélectionne automatiquement le meilleur modèle/stacking en
+            fonction des performances enregistrées. Si False, utilise le modèle
+            champion codé en dur ou le stacking par défaut.
+        results_csv_path: Chemin vers le CSV des résultats des modèles individuels.
+            Utilisé uniquement si auto_select=True et use_stacking=False. Par défaut,
+            cherche ``outputs/modeling/test_results_all_models.csv``.
+        stacking_dir: Dossier contenant les JSON de stacking. Utilisé uniquement
+            si auto_select=True et use_stacking=True. Par défaut,
+            cherche ``artifacts/models/notebook3/stacking``.
+        base_dir: Répertoire racine du projet. Par défaut ``'.'``.
+
+    Returns:
+        DataFrame contenant les prédictions finales.
     """
-    pipeline = PredictionPipeline()
-    
-    if use_stacking:
-        return pipeline.generate_predictions_with_stacking()
+    # Instancier le pipeline avec le répertoire de base
+    pipeline = PredictionPipeline(base_dir=base_dir or ".")
+
+    if auto_select:
+        if use_stacking:
+            # Sélection automatique du meilleur stacking
+            # Déterminer le dossier par défaut si stacking_dir non fourni
+            if stacking_dir is None:
+                # Préférence pour outputs/modeling/notebook3/stacking
+                default_dir = pipeline.outputs_dir / "modeling" / "notebook3" / "stacking"
+                if not default_dir.exists():
+                    default_dir = pipeline.models_dir / "notebook3" / "stacking"
+                stacking_dir = default_dir
+            return pipeline.generate_predictions_with_stacking_auto(stacking_dir)
+        else:
+            # Sélection automatique du meilleur modèle individuel
+            if results_csv_path is None:
+                # Chemin par défaut vers test_results_all_models.csv
+                default_csv = pipeline.outputs_dir / "modeling" / "test_results_all_models.csv"
+                # Fallback vers cross_validation_results.csv si le premier n'existe pas
+                if not default_csv.exists():
+                    default_csv = pipeline.outputs_dir / "modeling" / "cross_validation_results.csv"
+                results_csv_path = default_csv
+            return pipeline.generate_predictions_with_best_model_auto(results_csv_path)
     else:
-        return pipeline.generate_predictions_with_best_model()
+        # Pas d'auto-sélection
+        if use_stacking:
+            return pipeline.generate_predictions_with_stacking()
+        else:
+            return pipeline.generate_predictions_with_best_model()
 
 if __name__ == "__main__":
     # Générer avec le modèle champion

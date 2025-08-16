@@ -561,33 +561,20 @@ class PredictionPipeline:
 # 4. FONCTIONS UTILITAIRES GÉNÉRALES
 # =============================================================================
 
-# -----------------------------------------------------------------------------
-# Wrapper de prédictions finales
-# -----------------------------------------------------------------------------
-# Nous réutilisons la fonction définie dans modules.prediction afin de ne pas
-# dupliquer la logique. Cette fonction accepte également les arguments
-# ``auto_select`` et ``results_csv_path`` pour sélectionner automatiquement le
-# meilleur modèle ou stacking.
-# Importer la fonction de prédiction finale depuis le module prediction. Comme les
-# modules ne sont pas emballés dans un package Python, on utilise une importation
-# absolue.
-from prediction import generate_final_predictions as _generate_final_predictions
-
-def generate_final_predictions(*args, **kwargs) -> pd.DataFrame:
+def generate_final_predictions(use_stacking: bool = False, base_dir: Union[str, Path] = ".") -> pd.DataFrame:
     """
-    Génère les prédictions finales en réutilisant la fonction de
-    ``modules.prediction.generate_final_predictions``. Tous les arguments
-    positionnels ou mots-clés sont passés tels quels à cette fonction.
-
-    Exemple :
-        >>> from modules.utils import generate_final_predictions
-        >>> submission = generate_final_predictions(use_stacking=False, auto_select=True,
-                                                   results_csv_path="outputs/modeling/test_results_all_models.csv")
-
-    Voir ``modules.prediction.generate_final_predictions`` pour plus de détails
-    sur les paramètres disponibles.
+    Génère les prédictions finales avec les vrais modèles.
+    
+    Args:
+        use_stacking: Si True, utilise le stacking. Sinon, utilise le modèle champion.
+        base_dir: Répertoire de base du projet
     """
-    return _generate_final_predictions(*args, **kwargs)
+    pipeline = PredictionPipeline(base_dir)
+    
+    if use_stacking:
+        return pipeline.generate_predictions_with_stacking()
+    else:
+        return pipeline.generate_predictions_with_best_model()
 
 def calculate_model_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_proba: Optional[np.ndarray] = None) -> Dict[str, float]:
     """
