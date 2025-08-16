@@ -192,7 +192,17 @@ class PredictionPipeline:
             for col in ['X1_transformed', 'X2_transformed', 'X3_transformed']:
                 if col in capping_params and col in df.columns:
                     lower, upper = capping_params[col]
-                    df[col] = df[col].clip(lower=lower, upper=upper)
+                    # S'assurer que les valeurs de capping sont numériques
+                    try:
+                        lower = float(lower) if lower is not None else None
+                        upper = float(upper) if upper is not None else None
+                        # Vérifier que la colonne est bien numérique
+                        if not pd.api.types.is_numeric_dtype(df[col]):
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
+                        df[col] = df[col].clip(lower=lower, upper=upper)
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Erreur lors du capping de {col}: {e}, ignoré")
+                        continue
             logger.info("Capping des outliers appliqué")
         
         # 5. Features polynomiales
@@ -647,7 +657,10 @@ def generate_final_predictions(
                 # Préférence pour outputs/modeling/notebook3/stacking
                 default_dir = pipeline.outputs_dir / "modeling" / "notebook3" / "stacking"
                 if not default_dir.exists():
-                    default_dir = pipeline.models_dir / "notebook3" / "stacking"
+                    # Essayer artifacts/models/notebook3/stacking
+                    default_dir = pipeline.base_dir / "artifacts" / "models" / "notebook3" / "stacking"
+                    if not default_dir.exists():
+                        default_dir = pipeline.models_dir / "notebook3" / "stacking"
                 stacking_dir = default_dir
             return pipeline.generate_predictions_with_stacking_auto(stacking_dir)
         else:
