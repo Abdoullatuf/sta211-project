@@ -658,18 +658,23 @@ class PredictionPipeline:
         
         # Extraire les probabilités de test
         predictions_data = stacking_data.get('predictions', {})
-        test_proba = predictions_data.get('test_proba', [])
-        
+        # Supporte différentes clés : "test_proba" (nouvelle) ou "test" (ancienne)
+        test_proba = predictions_data.get('test_proba')
+        if not test_proba:
+            test_proba = predictions_data.get('test')
+
         if not test_proba:
             logger.error("Aucune probabilité de test trouvée dans les données de stacking")
             return self.generate_predictions_with_stacking()
-        
+
         # Appliquer le seuil
         predictions = (np.array(test_proba) >= threshold).astype(int)
-        
-        # Créer les IDs (supposer que c'est dans l'ordre des données de test)
+
+        # Créer les IDs (utiliser ceux fournis si disponibles)
         num_predictions = len(predictions)
-        ids = list(range(num_predictions))
+        ids = stacking_data.get('test_ids')
+        if not ids or len(ids) != num_predictions:
+            ids = list(range(num_predictions))
         
         # Créer la soumission
         submission = pd.DataFrame({
