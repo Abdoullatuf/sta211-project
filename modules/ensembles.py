@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, Any
 import logging
 
+# Imports pour le chargement de données
+from modules.utils import load_artifact
+from modules.config import cfg
+
 # Scikit-learn imports
 from sklearn.ensemble import (
     VotingClassifier, BaggingClassifier, RandomForestClassifier,
@@ -36,6 +40,150 @@ from modules.utils.storage import save_artifact, load_artifact
 
 # Configuration du logging
 log = cfg.get_logger(__name__)
+
+
+# =============================================================================
+# 0. CHARGEMENT DE DONNÉES POUR STACKING
+# =============================================================================
+
+def load_stacking_data() -> Tuple[Dict, Dict, pd.DataFrame, Dict]:
+    """
+    Charge spécifiquement les données nécessaires pour le stacking Notebook 03.
+    Utilise le système load_artifact unifié.
+    
+    Returns:
+        Tuple[splits, pipelines, metrics_df, features]
+        - splits: Dict des données splitées {method: {X_train, y_train, ...}}
+        - pipelines: Dict des pipelines optimisés {method_version: {model: pipeline}}
+        - metrics_df: DataFrame des métriques et seuils optimaux
+        - features: Dict des colonnes de features {method: [list]}
+    """
+    log.info("📦 Chargement optimisé des données pour le stacking...")
+    
+    models_dir = cfg.paths.models / "notebook2"
+    
+    # ✅ 1. Chargement des splits (train/val/test)
+    log.info("📊 Chargement des splits KNN et MICE...")
+    splits = {}
+    
+    for method in ["knn", "mice"]:
+        method_dir = models_dir / method
+        splits[method] = {}
+        
+        for subset in ["train", "val", "test"]:
+            try:
+                data = load_artifact(f"{method}_{subset}.pkl", method_dir)
+                splits[method][f"X_{subset}"] = data["X"]
+                splits[method][f"y_{subset}"] = data["y"]
+            except Exception as e:
+                log.warning(f"⚠️ Erreur chargement {method} {subset}: {e}")
+        
+        if f"X_train" in splits[method]:
+            log.info(f"✅ {method.upper()} splits chargés : {splits[method]['X_train'].shape}")
+    
+    # ✅ 2. Chargement des pipelines via les fichiers JSON
+    log.info("🔧 Chargement des pipelines optimisés...")
+    pipelines = {}
+    total_models = 0
+    
+    for method in ["knn", "mice"]:
+        for version in ["full", "reduced"]:
+            key = f"{method}_{version}"
+            try:
+                # Charger les chemins des pipelines
+                paths_dict = load_artifact(f"best_{key}_pipelines.json", models_dir)
+                pipelines[key] = {}
+                
+                # Charger chaque pipeline
+                for model_name, path_str in paths_dict.items():
+                    try:
+                        filename = Path(path_str).name
+                        pipeline = load_artifact(filename, models_dir)
+                        pipelines[key][model_name] = pipeline
+                        total_models += 1
+                    except Exception as e:
+                        log.warning(f"⚠️ Pipeline {model_name} ({key}) non chargé: {e}")
+                        
+            except Exception as e:
+                log.warning(f"⚠️ Erreur configuration {key}: {e}")
+    
+    log.info(f"✅ {total_models} pipelines chargés")
+    
+    # ✅ 3. Chargement des métriques (bon répertoire)
+    log.info("📈 Chargement des métriques...")
+    try:
+        metrics_df = pd.read_csv(cfg.paths.artifacts / "models" / "df_all_thresholds.csv")
+        log.info(f"✅ Métriques chargées : {len(metrics_df)} modèles")
+    except Exception as e:
+        log.error(f"❌ Erreur métriques: {e}")
+        metrics_df = pd.DataFrame()
+    
+    # ✅ 4. Extraction des features
+    log.info("🔍 Extraction des features...")
+    features = {}
+    for method in ["knn", "mice"]:
+        if method in splits and "X_train" in splits[method]:
+            features[method] = splits[method]["X_train"].columns.tolist()
+        else:
+            features[method] = []
+    
+    log.info(f"✅ Features extraites : KNN({len(features.get('knn', []))}), MICE({len(features.get('mice', []))})")
+    
+    # ✅ 5. Résumé
+    log.info("🚀 Chargement terminé pour le stacking")
+    log.info(f"   • Splits : {len(splits)} méthodes")
+    log.info(f"   • Pipelines : {total_models} modèles")
+    log.info(f"   • Métriques : {len(metrics_df)} entrées")
+    
+    return splits, pipelines, metrics_df, features
+
+
+def select_champion_models(metrics_df: pd.DataFrame, 
+                          pipelines: Dict,
+                          version: str = "FULL",
+                          top_n: int = 4) -> Tuple[Dict, pd.DataFrame]:
+    """
+    Sélectionne les modèles champions pour le stacking.
+    
+    Args:
+        metrics_df: DataFrame des métriques
+        pipelines: Dict des pipelines
+        version: Version à sélectionner ("FULL" ou "REDUCED")
+        top_n: Nombre de champions à sélectionner
+        
+    Returns:
+        Tuple[champion_pipelines, champion_metrics]
+    """
+    log.info(f"🏆 Sélection des {top_n} champions {version}")
+    
+    # Filtrage des champions
+    champions_df = metrics_df[
+        (metrics_df['Version'] == version) & 
+        (metrics_df['f1'] >= 0.917)
+    ].head(top_n)
+    
+    log.info(f"✅ {len(champions_df)} champions sélectionnés")
+    
+    # Extraction des pipelines correspondants
+    champion_pipelines = {}
+    
+    for _, row in champions_df.iterrows():
+        model = row['model']
+        imputation = row['Imputation'].lower()
+        
+        # Clé du pipeline
+        pipeline_key = f"{imputation}_{version.lower()}"
+        
+        if pipeline_key in pipelines and model in pipelines[pipeline_key]:
+            champion_key = f"{model}_{imputation}_{version}"
+            champion_pipelines[champion_key] = pipelines[pipeline_key][model]
+            log.info(f"   • {champion_key}: F1={row['f1']:.4f}")
+        else:
+            log.warning(f"⚠️ Pipeline non trouvé pour {model} {imputation} {version}")
+    
+    log.info(f"🎯 {len(champion_pipelines)} pipelines champions récupérés")
+    
+    return champion_pipelines, champions_df
 
 
 # =============================================================================
