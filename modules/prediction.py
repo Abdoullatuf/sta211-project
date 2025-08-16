@@ -507,6 +507,7 @@ class PredictionPipeline:
         best_f1 = -1
         best_threshold = None
         best_suffix = None
+        best_data = None
         # Lister tous les fichiers JSON
         json_files = list(stacking_dir.glob("*.json"))
         logger.info(f"Fichiers JSON trouvés : {[f.name for f in json_files]}")
@@ -525,6 +526,7 @@ class PredictionPipeline:
                 if f1 is not None and threshold is not None and float(f1) > best_f1:
                     best_f1 = float(f1)
                     best_threshold = float(threshold)
+                    best_data = data
                     # suffix identifie le type : knn ou mice
                     # Exemple de fichier : stacking_no_refit_knn_full.json
                     name = json_file.name
@@ -534,19 +536,19 @@ class PredictionPipeline:
                         best_suffix = 'mice'
                     else:
                         best_suffix = None
+                    logger.info(f"Nouveau meilleur stacking : {best_suffix} (F1={best_f1:.4f}, seuil={best_threshold})")
             except Exception:
                 continue
 
-        if best_f1 == -1 or best_suffix is None:
+        if best_f1 == -1 or best_suffix is None or best_data is None:
             logger.error("Aucun fichier de stacking valide trouvé.")
             logger.warning("Retour au stacking par défaut…")
             return self.generate_predictions_with_stacking()
 
         logger.info(f"Meilleur stacking : {best_suffix.upper()} (F1={best_f1:.4f}, seuil={best_threshold})")
-        # Générer et retourner les prédictions avec le stacking sélectionné
-        # Le stacking combine KNN et MICE ; seule la façon d'agréger (refit) change
-        # Ici, on réutilise generate_predictions_with_stacking mais on remplace le seuil
-        # On va charger les probabilités puis appliquer le seuil optimum
+        
+        # Utiliser directement les prédictions sauvegardées dans le JSON
+        return self.create_submission_from_stacking_results(best_data, best_threshold)
 
         # 1. Charger et prétraiter les données
         features, ids = self.load_and_preprocess_test_data()
