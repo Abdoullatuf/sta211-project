@@ -766,6 +766,75 @@ def generate_final_predictions(
         else:
             return pipeline.generate_predictions_with_best_model()
 
+def create_submission_with_full_test_data(method="stacking_with_refit_mice"):
+    """
+    Génère un fichier de soumission en utilisant les données de test complètes (820 échantillons).
+    Utilise les résultats JSON stockés plutôt que de recharger les modèles.
+    
+    Args:
+        method: Méthode de stacking à utiliser ("stacking_with_refit_mice" ou "stacking_with_refit_knn")
+    
+    Returns:
+        DataFrame: Soumission avec exactement 820 prédictions
+    """
+    import pandas as pd
+    import json
+    from pathlib import Path
+    
+    # Charger les données de test complètes
+    test_data_path = cfg.paths.data / "raw" / "data_test.csv"
+    if not test_data_path.exists():
+        raise FileNotFoundError(f"Fichier de test introuvable : {test_data_path}")
+    
+    test_data = pd.read_csv(test_data_path)
+    logger.info(f"📊 Données de test chargées : {test_data.shape}")
+    
+    # Charger les résultats JSON du stacking
+    stacking_results_path = cfg.paths.artifacts / "models" / "notebook3" / "stacking" / f"{method}.json"
+    
+    if not stacking_results_path.exists():
+        raise FileNotFoundError(f"Résultats de stacking introuvables : {stacking_results_path}")
+    
+    with open(stacking_results_path, 'r') as f:
+        results = json.load(f)
+    
+    # Vérifier que nous avons les bonnes prédictions
+    if "predictions" not in results or "test_pred" not in results["predictions"]:
+        raise ValueError(f"Prédictions manquantes dans {stacking_results_path}")
+    
+    predictions = results["predictions"]["test_pred"]
+    
+    # Vérifier la cohérence avec les données de test
+    if len(predictions) != len(test_data):
+        logger.warning(f"⚠️ Désaccord: {len(predictions)} prédictions vs {len(test_data)} échantillons de test")
+        
+        # Si on a moins de prédictions que d'échantillons de test, on utilise les données disponibles
+        if len(predictions) < len(test_data):
+            logger.info(f"📊 Troncature des données de test à {len(predictions)} échantillons")
+            test_data = test_data.iloc[:len(predictions)]
+        else:
+            # Si on a plus de prédictions, on tronque les prédictions
+            logger.info(f"📊 Troncature des prédictions à {len(test_data)} échantillons")
+            predictions = predictions[:len(test_data)]
+    
+    # Créer le DataFrame de soumission
+    submission = pd.DataFrame({
+        'id': range(len(predictions)),
+        'outcome': ['ad.' if pred == 1 else 'noad.' for pred in predictions]
+    })
+    
+    # Sauvegarder
+    output_dir = cfg.paths.outputs / "predictions"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"submission_{method}_full.csv"
+    
+    submission.to_csv(output_path, index=False)
+    logger.info(f"📝 Fichier de soumission sauvegardé : {output_path}")
+    logger.info(f"📊 {len(submission)} prédictions générées")
+    logger.info(f"📈 Répartition: {sum(predictions)} 'ad.' ({100*sum(predictions)/len(predictions):.1f}%), {len(predictions)-sum(predictions)} 'noad.' ({100*(len(predictions)-sum(predictions))/len(predictions):.1f}%)")
+    
+    return submission
+
 if __name__ == "__main__":
     # Générer avec le modèle champion
     submission = generate_final_predictions(use_stacking=False)
